@@ -30,7 +30,7 @@ object Tv {
         // Never pop "Allow debugging?" on the TV from a phone tap: the first connection is started
         // on purpose, from setup. After that, reconnecting is silent.
         if (!Adb.connected && (!(Adb.everAllowed || Adb.paired) || !Adb.ensure())) throw ApiError(503,
-            "$what needs ADB on the TV. Open Couch TV on the TV and connect it (see the setup page).")
+            "$what needs ADB on the TV. Open HomeTV on the TV and connect debugging.")
     }
 
     // ---------- keys and text ----------
@@ -113,12 +113,37 @@ object Tv {
     } catch (e: Exception) { false }
 
     /** The app on screen. Needs ADB; null without it. */
+    /**
+     * Which app is in front. Android's usage records answer this in-process for almost nothing; the
+     * dumpsys fallback (over ADB) is heavy on a small TV, so it is only used without usage access.
+     */
     fun frontPackage(): String? {
+        usageFront()?.let { return it }
         if (!Adb.connected) return if (App.inForeground) BuildConfig.APPLICATION_ID else null
         return try {
             val out = Adb.shell("dumpsys activity activities | grep -m 3 -E 'topResumedActivity|mResumedActivity|ResumedActivity'", 8000)
             Regex("ActivityRecord\\{\\S+ u0 ([^/\\s]+)/").find(out)?.groupValues?.get(1)
         } catch (e: Exception) { null }
+    }
+
+    private val usage by lazy { ctx.getSystemService(android.app.usage.UsageStatsManager::class.java) }
+    private var usageFrom = 0L
+    private var usageLast: String? = null
+
+    @Synchronized private fun usageFront(): String? {
+        val ops = ctx.getSystemService(android.app.AppOpsManager::class.java)
+        val mode = ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+        if (mode != android.app.AppOpsManager.MODE_ALLOWED) return null
+        val now = System.currentTimeMillis()
+        // Read only what happened since the last look (the first look goes back a day).
+        val ev = usage.queryEvents(if (usageFrom == 0L) now - 86_400_000 else usageFrom, now) ?: return usageLast
+        val e = android.app.usage.UsageEvents.Event()
+        while (ev.hasNextEvent()) {
+            ev.getNextEvent(e)
+            if (e.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) usageLast = e.packageName
+        }
+        usageFrom = now
+        return usageLast
     }
 
     fun waitForApp(pkgs: Set<String>, timeoutMs: Long = 8000): String? {

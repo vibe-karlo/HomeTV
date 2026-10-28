@@ -1,0 +1,222 @@
+window.HOME_READY.then(function () {
+  "use strict";
+  var H = window.Home, P = H.prefs, D = window.HOME_DATA, TV = window.TVOS;
+  var address = (D.address || location.hostname) + ":" + (D.port || 5400);
+  function post(path) {
+    return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then(function (r) { return r.json(); });
+  }
+  var el = document.getElementById("settings"), list = document.getElementById("set-list");
+  var $ = function (id) { return document.getElementById(id); };
+
+  var CHEV = '<svg class="chev" viewBox="0 0 14 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2.5 11.5 12l-9 9.5"/></svg>';
+  var TICK = '<svg class="tick" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 14.5 11.5 21 23 7.5"/></svg>';
+  // Leaves HomeTV for another screen.
+  var EXT = '<svg class="chev ext" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14 14 6M7.5 6H14v6.5"/></svg>';
+  var CATS = ["Landscapes", "Cities", "Space", "Underwater"];
+  var CAT_COUNT = {};
+  (window.AERIALS || []).forEach(function (a) { CAT_COUNT[a.cat] = (CAT_COUNT[a.cat] || 0) + 1; });
+  var AFTER = [5, 10, 15, 30];
+  var appName = function (pkg) { for (var i = 0; i < H.apps.length; i++) if (H.apps[i].package === pkg) return H.apps[i].name; return pkg; };
+  var side = null;   // a page can put its own words in the side panel (the pairing code)
+
+  // ---------------------------------------------------------------- pages
+
+  var PAGES = {
+    root: { title: "Settings", rows: function () {
+      return [
+        { label: "Background", value: P.background === "aerial" ? "Aerials" : "Shows",
+          help: "What plays behind the home screen: artwork from popular shows, or Apple’s aerial films.",
+          act: function () { H.setBackground(P.background === "aerial" ? "shows" : "aerial"); } },
+        { label: "Aerial Places", menu: "places",
+          value: P.aerialCats.length === CATS.length ? "All" : P.aerialCats.length + " of " + CATS.length,
+          help: "Which aerials play, on the home screen and as the screensaver." },
+        { label: "Screensaver", value: P.screensaver ? "On" : "Off",
+          help: "Aerials with the time, when the TV has been idle for a while.",
+          act: function () { P.screensaver = !P.screensaver; H.save(); } },
+        { label: "Start After", value: P.screensaverAfter + " minutes", off: !P.screensaver,
+          help: "How long the TV waits before the screensaver starts.",
+          act: function () { P.screensaverAfter = AFTER[(AFTER.indexOf(P.screensaverAfter) + 1) % AFTER.length]; H.save(); } },
+        { label: "Clock", value: P.clock === "12h" ? "12-hour" : "24-hour",
+          help: "How the time reads in the corner of the home screen.",
+          act: function () { P.clock = P.clock === "12h" ? "24h" : "12h"; H.save(); } },
+        { label: "Live Sport", value: P.sport ? "On" : "Off",
+          help: "F1 and NK Osijek broadcasts at the top of the home screen. MAXSport and Arena Sport open MAXtv, other channels open EON.",
+          act: function () { P.sport = !P.sport; H.save(); H.rebuildRows(); } },
+        { label: "Live TV", value: P.tvnow ? "On" : "Off",
+          help: "What\u2019s on now on RTL and Nova TV, in the slider at the top. Opens EON.",
+          act: function () { P.tvnow = !P.tvnow; H.save(); H.rebuildRows(); } },
+        { label: "Hidden Genres", menu: "genres",
+          value: P.hiddenGenres.length ? P.hiddenGenres.join(", ") : "None",
+          help: "Shows in these genres stay out of the suggestions. Continue Watching keeps everything." },
+        { label: "Apps", menu: "apps", value: (H.apps.length - P.hidden.length) + " on Home",
+          help: "Which apps sit in the dock. Hidden apps stay installed." },
+        { label: "Remote Buttons", menu: "buttons",
+          help: "What the Philips and Rakuten TV buttons on your remote open." },
+        { label: "Phone Remote", menu: "phone", help: "Use your phone as the remote, with a keyboard for typing." },
+        { label: "TV Settings", ext: true, help: "The TV’s own settings: picture, sound, network, inputs.",
+          act: function () { if (TV) TV.openSettings(); else H.toast("Opens the TV’s settings"); } },
+        { label: "About", menu: "about", help: "This TV and where the home screen gets its shows." }
+      ];
+    } },
+
+    places: { title: "Aerial Places", rows: function () {
+      return CATS.map(function (c) {
+        return { label: c, tick: P.aerialCats.indexOf(c) >= 0, value: (CAT_COUNT[c] || 0) + " films",
+          help: "Tap to include or leave out " + c.toLowerCase() + ". At least one place stays on.",
+          act: function () {
+            var i = P.aerialCats.indexOf(c);
+            if (i >= 0 && P.aerialCats.length === 1) { H.toast("Keep at least one place"); return; }
+            if (i >= 0) P.aerialCats.splice(i, 1); else P.aerialCats.push(c);
+            H.save(); H.newAerial();
+          } };
+      });
+    } },
+
+    genres: { title: "Hidden Genres", rows: function () {
+      return H.genres().map(function (g) {
+        var hidden = P.hiddenGenres.indexOf(g) >= 0;
+        return { label: g, value: hidden ? "Hidden" : "Shown", off: hidden,
+          help: hidden ? g + " stays out of the suggestions. Select to show it." : "Select to keep " + g.toLowerCase() + " out of the suggestions.",
+          act: function () {
+            var i = P.hiddenGenres.indexOf(g);
+            if (i >= 0) P.hiddenGenres.splice(i, 1); else P.hiddenGenres.push(g);
+            H.save(); H.rebuildRows();
+          } };
+      });
+    } },
+
+    apps: { title: "Apps", rows: function () {
+      return H.apps.map(function (a) {
+        var hidden = P.hidden.indexOf(a.package) >= 0;
+        return { label: a.name, value: hidden ? "Hidden" : "On Home", off: hidden,
+          help: hidden ? a.name + " is hidden. Select to put it back in the dock." : a.name + " is in the dock. Select to hide it.",
+          act: function () {
+            var i = P.hidden.indexOf(a.package);
+            if (i >= 0) P.hidden.splice(i, 1); else P.hidden.push(a.package);
+            H.save(); H.rebuildDock();
+          } };
+      });
+    } },
+
+    buttons: { title: "Remote Buttons", rows: function () {
+      return [
+        { label: "Philips Button", menu: "pick-philips", value: appName(P.philipsButton), help: "The button with the Philips logo." },
+        { label: "Rakuten TV Button", menu: "pick-rakuten", value: appName(P.rakutenButton), help: "The button labelled Rakuten TV." }
+      ];
+    } },
+
+    "pick-philips": picker("Philips Button", "philipsButton"),
+    "pick-rakuten": picker("Rakuten TV Button", "rakutenButton"),
+
+    phone: { title: "Phone Remote", rows: function () {
+      return [
+        { label: "Pair a Phone", help: "Shows a code for a new phone.",
+          act: function () {
+            var show = function (code) {
+              side = { name: code.slice(0, 3) + " " + code.slice(3),
+                help: "On your phone, open " + address + " and type this code. It works once, for 3 minutes." };
+              draw();
+            };
+            if (TV) post("/api/pair/new").then(function (d) { if (d.pin) show(d.pin); }, function () { H.toast("Could not reach the TV app"); });
+            else show(String(100000 + Math.floor(Math.random() * 900000)));
+          } },
+        { label: "Forget All Phones", help: "Signs every phone out. Each one pairs again with a new code.",
+          act: function () {
+            if (!TV) { H.toast("All phones signed out"); return; }
+            post("/api/phones/forget").then(function () { H.toast("All phones signed out"); }, function () { H.toast("Could not reach the TV app"); });
+          } }
+      ];
+    } },
+
+    about: { title: "About", rows: function () {
+      return [
+        { label: "TV", value: "Philips 70PUS7304", help: "Android TV 12." },
+        { label: "Phone Remote", value: address, help: "Open this address on a phone at home to use it as the remote." },
+        { label: "Shows", value: "TMDB, Stremio", help: "Popular on Netflix comes from TMDB for Croatia. Trending comes from Stremio." },
+        { label: "Live Sport", value: "TvProfil", help: "Live sport times from TvProfil’s free guide for home use (tvprofil.net/xmltv)." },
+        { label: "Photos", value: "Yours, Apple",
+          help: "The F1 and Opus Arena pictures are the ones you chose, for this TV only. Aerials are Apple’s." },
+        { label: "Version", value: D.version || "2.0 preview", help: "HomeTV." }
+      ];
+    } }
+  };
+
+  function picker(title, key) {
+    return { title: title, rows: function () {
+      return H.apps.map(function (a) {
+        return { label: a.name, tick: P[key] === a.package, help: "Press the button to open " + a.name + ".",
+          act: function () { P[key] = a.package; H.save(); back(); } };
+      });
+    } };
+  }
+
+  // ---------------------------------------------------------------- state + drawing
+
+  var stack = [], rows = [];
+  var ROW = 94, VISIBLE = 9;
+
+  function page() { return stack[stack.length - 1]; }
+
+  function draw(slide) {
+    var pg = page(), def = PAGES[pg.id];
+    rows = def.rows();
+    pg.focus = Math.max(0, Math.min(pg.focus, rows.length - 1));
+    list.innerHTML = "";
+    rows.forEach(function (r, i) {
+      var li = document.createElement("li");
+      li.className = "set-row" + (r.off ? " off" : "") + (i === pg.focus ? " focus" : "");
+      li.innerHTML = '<span class="label"></span>' + (r.value ? '<span class="value"></span>' : "") +
+        (r.tick ? TICK : "") + (r.menu ? CHEV : "") + (r.ext ? EXT : "");
+      li.querySelector(".label").textContent = r.label;
+      if (r.value) li.querySelector(".value").textContent = r.value;
+      li.addEventListener("click", function () { if (pg.focus === i) select(); else { pg.focus = i; side = null; draw(); } });
+      list.appendChild(li);
+    });
+    var top = rows.length > VISIBLE ? Math.max(0, Math.min(pg.focus - 3, rows.length - VISIBLE)) : 0;
+    list.style.transform = "translateY(" + -top * ROW + "px)";
+    if (slide) { list.classList.remove("slide"); void list.offsetWidth; list.classList.add("slide"); }
+
+    $("set-crumb").textContent = stack.map(function (p) { return PAGES[p.id].title; }).join("  ›  ");
+    var r = rows[pg.focus];
+    $("set-name").textContent = side ? side.name : r.label;
+    $("set-help").textContent = side ? side.help : r.help || "";
+  }
+
+  function select() {
+    var r = rows[page().focus];
+    if (r.menu) { stack.push({ id: r.menu, focus: 0 }); side = null; draw(true); return; }
+    if (r.act) { r.act(); draw(); }
+  }
+
+  function back() {
+    side = null;
+    if (stack.length > 1) { stack.pop(); draw(true); } else close();
+  }
+
+  var openFlag = false;
+  function open() {
+    stack = [{ id: "root", focus: 0 }]; side = null;
+    el.hidden = false; void el.offsetWidth; el.classList.add("open"); openFlag = true;
+    draw();
+  }
+  function close() {
+    el.classList.remove("open"); openFlag = false;
+    setTimeout(function () { if (!openFlag) el.hidden = true; }, 420);
+    H.closed();
+  }
+
+  window.Settings = {
+    open: open,
+    isOpen: function () { return openFlag; },
+    key: function (k) {
+      var pg = page();
+      if (k === "ArrowUp") { if (pg.focus > 0) { pg.focus--; side = null; draw(); } }
+      else if (k === "ArrowDown") { if (pg.focus < rows.length - 1) { pg.focus++; side = null; draw(); } }
+      else if (k === "Enter" || k === " ") select();
+      else if (k === "ArrowRight") { if (rows[pg.focus].menu) select(); }
+      else if (k === "ArrowLeft" || k === "Escape" || k === "Backspace" || k === "GoBack" || k === "BrowserBack") back();
+      else return false;
+      return true;
+    }
+  };
+});

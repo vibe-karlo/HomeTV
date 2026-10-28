@@ -3,11 +3,7 @@ package dev.couchtv.ontv
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.ResolveInfo
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.drawable.AdaptiveIconDrawable
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -26,8 +22,6 @@ import android.webkit.WebViewClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The TV home screen: the same page as the computer-bridge mode (tv-home/web), served by this
@@ -38,8 +32,6 @@ class HomeActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var web: WebView? = null
     private var ready = false
-    private val banners = ConcurrentHashMap<String, ByteArray>()
-    private val icons = ConcurrentHashMap<String, ByteArray>()
     private val base get() = "http://127.0.0.1:${Store.port}"
 
     override fun onCreate(b: Bundle?) {
@@ -63,12 +55,21 @@ class HomeActivity : Activity() {
                     if (req.isForMainFrame) { ready = false; main.postDelayed({ load() }, 700) }
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest) = true
+                // Android may end the page's renderer when memory runs out. Build a fresh WebView
+                // instead of crashing or leaving a dead screen.
+                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                    android.util.Log.w("couchtv", "home renderer gone (crash=${detail.didCrash()}), rebuilding")
+                    (view.parent as? android.view.ViewGroup)?.removeView(view)
+                    view.destroy(); web = null; ready = false
+                    main.post { recreate() }
+                    return true
+                }
                 override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
                     val u = req.url
                     if (u.host != "tvos.invalid") return null
                     val pkg = u.lastPathSegment ?: return null
                     val isIcon = u.pathSegments.firstOrNull() == "icon"
-                    val img = (if (isIcon) iconImage(pkg) else bannerImage(pkg)) ?: return null
+                    val img = (if (isIcon) AppArt.icon(pkg) else AppArt.banner(pkg)) ?: return null
                     return WebResourceResponse(if (isIcon) "image/png" else "image/jpeg", null, ByteArrayInputStream(img))
                 }
             }
@@ -80,6 +81,11 @@ class HomeActivity : Activity() {
     }
 
     private fun load() { web?.loadUrl("$base/tv/") }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) js("window.tv && tv.lowMemory && tv.lowMemory()")
+    }
 
     override fun onResume() { super.onResume(); hideBars(); if (ready) js("window.tv && tv.resume()") }
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); js("window.tv && tv.home()") }
@@ -118,54 +124,16 @@ class HomeActivity : Activity() {
         }
         @JavascriptInterface fun openSettings(): Boolean { main.post { runCatching { startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }; return true }
         @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
-        @JavascriptInterface fun keep(key: String, value: String) { getSharedPreferences("page", MODE_PRIVATE).edit().putString(key, value).apply() }
+        @JavascriptInterface fun keep(key: String, value: String) {
+            getSharedPreferences("page", MODE_PRIVATE).edit().putString(key, value).commit()
+            if (key == "couch:prefs") Thread { runCatching { Prefs.changed() } }.start()
+        }
         @JavascriptInterface fun kept(key: String): String? = getSharedPreferences("page", MODE_PRIVATE).getString(key, null)
     }
 
-    private fun tvApps(): List<ResolveInfo> = Tv.tvLaunchables().filter { it.activityInfo.packageName != packageName }
-        .sortedBy { it.loadLabel(packageManager).toString().lowercase() }
-
-    // ---------------------------------------------------------------- app tiles (same drawing as the computer-bridge launcher)
-
-    private fun bannerImage(pkg: String): ByteArray? {
-        banners[pkg]?.let { return it }
-        val ri = tvApps().firstOrNull { it.activityInfo.packageName == pkg } ?: return null
-        val bmp = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        c.drawColor(FLAP)
-        val banner = ri.activityInfo.loadBanner(packageManager) ?: ri.activityInfo.applicationInfo.loadBanner(packageManager)
-        if (banner != null) { banner.setBounds(0, 0, 640, 360); banner.draw(c) } else iconTile(ri.loadIcon(packageManager), c)
-        val bytes = ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it); bmp.recycle() }.toByteArray()
-        banners[pkg] = bytes
-        return bytes
-    }
-
-    private fun iconTile(icon: Drawable, c: Canvas) {
-        val n = 432
-        val sq = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
-        val sc = Canvas(sq)
-        if (icon is AdaptiveIconDrawable) {
-            icon.background?.apply { setBounds(0, 0, n, n); draw(sc) }; icon.foreground?.apply { setBounds(0, 0, n, n); draw(sc) }
-        } else { icon.setBounds(0, 0, n, n); icon.draw(sc) }
-        val edge = sq.getPixel(2, n / 2)
-        c.drawColor(edge)
-        val size = 220
-        c.drawBitmap(sq, null, android.graphics.Rect(320 - size / 2, 180 - size / 2, 320 + size / 2, 180 + size / 2), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
-        sq.recycle()
-    }
-
-    private fun iconImage(pkg: String): ByteArray? {
-        icons[pkg]?.let { return it }
-        val d = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { return null }
-        val bmp = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
-        d.setBounds(0, 0, 128, 128); d.draw(Canvas(bmp))
-        val bytes = ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it); bmp.recycle() }.toByteArray()
-        icons[pkg] = bytes
-        return bytes
-    }
+    private fun tvApps(): List<ResolveInfo> = AppArt.tvApps()
 
     companion object {
-        private val GROUND = Color.parseColor("#0D1E19")
-        private val FLAP = Color.parseColor("#131614")
+        private val GROUND = Color.parseColor("#0D0C0B")
     }
 }

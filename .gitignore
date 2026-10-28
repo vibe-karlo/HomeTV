@@ -37,3 +37,17 @@ platform-tools/
 *.bak-*
 *-backup-*
 .DS_Store
+aerial-cache/*.mov
+.env.local
+
+# HomeTV: not ours to publish
+# Switzer is licensed by Fontshare and may not be redistributed: scripts/build-next.sh downloads it
+home-next/fonts/
+remote-next/fonts/
+on-tv/android/app/src/main/res/font/switzer_*.ttf
+# Your own pictures for the live sport banner (see README)
+home-next/sport/*.jpg
+home-next/sport/*.png
+# Preview-only copies of app banners and Apple's aerial clips
+home-next/banners/
+home-next/aerial-cache/

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeTV</title>
+  <link rel="stylesheet" href="home.css">
+</head>
+<body>
+  <div id="stage">
+    <section id="hero" aria-live="polite">
+      <div class="hero-img" data-slot="a"></div>
+      <div class="hero-img" data-slot="b"></div>
+      <div id="aerial">
+        <video muted playsinline preload="auto"></video>
+        <video muted playsinline preload="none"></video>
+      </div>
+      <div class="hero-shade"></div>
+      <div id="aerial-info">
+        <div id="aerial-place"></div>
+        <p id="aerial-caption"></p>
+      </div>
+      <div id="hero-info">
+        <div id="hero-title"></div>
+        <p id="hero-meta"></p>
+        <p id="hero-desc"></p>
+        <div id="hero-watch" class="focusable" role="button"><span class="sheen"></span><span class="label"></span></div>
+      </div>
+    </section>
+
+    <div id="top">
+      <div id="top-gear" class="frost-host focusable" role="button" aria-label="Settings"></div>
+      <div id="clock" class="frost-host"><span id="clock-time"></span></div>
+    </div>
+
+    <div id="scroller">
+      <nav id="dock" class="frost-host" aria-label="Apps">
+        <div id="dock-track"></div>
+      </nav>
+      <div id="rows"></div>
+    </div>
+
+    <section id="settings" class="frost-host" aria-label="Settings" hidden>
+      <div id="set-side">
+        <h1 id="set-crumb">Settings</h1>
+        <div id="set-name"></div>
+        <p id="set-help"></p>
+      </div>
+      <div id="set-list-wrap"><ul id="set-list"></ul></div>
+    </section>
+
+    <div id="toast" role="status"></div>
+  </div>
+
+  <!-- Preview data (left out of the TV build); data.js uses the TV's own when running on the TV. -->
+  <script src="preview-data.js"></script>
+  <script src="aerials.js"></script>
+  <script src="aerial-cache.js"></script>
+  <script src="data.js"></script>
+  <script src="menu.js"></script>
+  <script src="home.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

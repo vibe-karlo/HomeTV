@@ -2,7 +2,7 @@
 
 Your own home screen and phone remote for a Google TV. No ads on the home screen. Open source (MIT).
 
-![The Night home screen](docs/screens/home-night.jpg)
+![The Night home screen](screens/home-night.jpg)
 
 ## Home backgrounds
 
@@ -16,9 +16,9 @@ the clock behind your own photo, make a transparent cut-out of everything in fro
 
 | Night | Golden hour | Waterline |
 |---|---|---|
-| ![Night](docs/screens/home-night.jpg) | ![Golden hour](docs/screens/home-golden.jpg) | ![Waterline](docs/screens/home-water.jpg) |
+| ![Night](screens/home-night.jpg) | ![Golden hour](screens/home-golden.jpg) | ![Waterline](screens/home-water.jpg) |
 | **Fog** | **Dawn** | **Classic** (`?theme=classic`) |
-| ![Fog](docs/screens/home-fog.jpg) | ![Dawn](docs/screens/home-dawn.jpg) | ![Classic](docs/screens/home-classic.jpg) |
+| ![Fog](screens/home-fog.jpg) | ![Dawn](screens/home-dawn.jpg) | ![Classic](screens/home-classic.jpg) |
 
 Shown with sample shows and sample people. On your TV, "keep watching" fills from what you
 actually watch.
@@ -29,7 +29,7 @@ No computer and no `config.json` needed for the everyday settings. Press down to
 pick the gear, **Settings** (just before More apps). OK opens a small menu: **Home settings** is
 couch-tv's own list, **TV settings** is Android's own (Wi-Fi, picture, sound).
 
-![Home settings on the TV](docs/screens/home-settings.jpg)
+![Home settings on the TV](screens/home-settings.jpg)
 
 Any remote works: up and down move, right or OK opens a section, OK changes a row, holding OK on a
 scene, an app, a person or a quick button picks it up so up and down move it, and Back steps back

@@ -236,6 +236,8 @@ object Adb {
         //  - write secure settings: lets the app switch wireless debugging back on after a reboot
         io.execute {
             runCatching { shell("appops set ${BuildConfig.APPLICATION_ID} SYSTEM_ALERT_WINDOW allow", 8000) }
+            // usage access: lets the app see which app is in front from Android's own records, instead of a heavy dumpsys
+            runCatching { shell("appops set ${BuildConfig.APPLICATION_ID} GET_USAGE_STATS allow", 8000) }
             if (Build.VERSION.SDK_INT >= 30) runCatching { shell("pm grant ${BuildConfig.APPLICATION_ID} android.permission.WRITE_SECURE_SETTINGS", 8000) }
         }
         return true

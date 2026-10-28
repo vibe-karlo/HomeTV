@@ -1,0 +1,7 @@
+// The aerial clips downloaded into aerial-cache/ for the preview.
+window.AERIAL_CACHE = [
+  "comp_GMT329_113NC_396B_1105_CHINA_v04_SDR_FINAL_20180706_F900F2700_SDR_2K_AVC.mov",
+  "comp_N013_C004_PS_v01_SDR_PS_20180925_F1970F7193_SDR_2K_AVC.mov",
+  "comp_LW_L001_C003__PSNK_DENOISE_v04_SDR_PS_FINAL_20180803_SDR_2K_AVC.mov",
+  "g201_TH_804_A001_8_SDR_20191031_SDR_2K_AVC.mov"
+];

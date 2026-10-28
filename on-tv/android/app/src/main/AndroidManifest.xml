@@ -19,13 +19,15 @@
          write secure settings lets it switch wireless debugging back on after a reboot. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- Usage access (granted over ADB, as above): which app is in front, without a heavy dumpsys. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
         android:name=".App"
-        android:label="Couch TV"
+        android:label="HomeTV"
         android:icon="@drawable/icon"
         android:banner="@drawable/banner"
         android:theme="@style/Couch"
@@ -33,7 +35,7 @@
         android:allowBackup="false"
         android:supportsRtl="false">
 
-        <!-- The setup screen: the "Couch TV" tile in the TV's app list. -->
+        <!-- The setup screen: the "HomeTV" tile in the TV's app list. -->
         <activity
             android:name=".SetupActivity"
             android:exported="true"
@@ -68,6 +70,32 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity-alias>
+
+        <!-- The Philips and Rakuten TV buttons on the remote (Philips sends these two actions). -->
+        <activity
+            android:name=".ButtonActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="org.droidtv.ACTION.LAUNCH_APP_GALLERY" />
+                <action android:name="org.droidtv.tv.intent.action.LAUNCH_RAKUTEN_TV" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- The aerial screensaver. -->
+        <service
+            android:name=".AerialDream"
+            android:exported="true"
+            android:label="HomeTV Aerials"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".BridgeService"

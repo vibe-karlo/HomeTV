@@ -44,7 +44,7 @@ object Store {
     fun weather(): JSONObject = (str("weather")?.let { runCatching { JSONObject(it) }.getOrNull() })
         ?: JSONObject().put("lat", -33.8688).put("lon", 151.2093).put("place", "Sydney").put("timezone", "Australia/Sydney")
 
-    fun country(): String = str("country", "AU") ?: "AU"
+    fun country(): String = str("country", "HR") ?: "HR"
 
     /** The public config the TV home and the phone remote read (same shape as the computer bridge). */
     fun publicConfig(): JSONObject = JSONObject()
@@ -54,7 +54,7 @@ object Store {
         .put("default_tv", TV_ID)
         .put("mode", "on-tv")
 
-    fun tvName(): String = str("tv_name", "This TV") ?: "This TV"
+    fun tvName(): String = str("tv_name", "Philips TV") ?: "Philips TV"
 
     const val TV_ID = "this-tv"
 

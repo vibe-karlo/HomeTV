@@ -28,7 +28,15 @@ class App : Application() {
         super.onCreate()
         // TLS 1.3 for wireless debugging on every Android version (the ADB library asks for it).
         runCatching { Security.insertProviderAt(org.conscrypt.Conscrypt.newProvider(), 1) }
-        Store.init(this); Adb.init(this); Tv.init(this)
+        Store.init(this); Adb.init(this); Tv.init(this); Prefs.init(this); Aerials.init(this); AppArt.init(this); Img.init(this)
+        // Screen off: a minute or two before deep standby. Use it to get tomorrow's pictures ready.
+        registerReceiver(object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                val lock = getSystemService(android.os.PowerManager::class.java)
+                    .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "couchtv:warm").apply { acquire(60_000) }
+                Thread { try { Img.warm() } catch (e: Exception) { } finally { if (lock.isHeld) lock.release() } }.start()
+            }
+        }, android.content.IntentFilter(Intent.ACTION_SCREEN_OFF))
         instance = this
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumed++ }
@@ -63,7 +71,7 @@ class App : Application() {
                     c.startActivity(Intent(c, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("pin", true))
                 } catch (e: Exception) { }
                 // If Android blocks the screen from opening (app in the background), a toast still shows.
-                if (!inForeground) Auth.currentPin()?.let { Toast.makeText(c, "Couch TV phone code: ${it.take(3)} ${it.drop(3)}", Toast.LENGTH_LONG).show() }
+                if (!inForeground) Auth.currentPin()?.let { Toast.makeText(c, "HomeTV phone code: ${it.take(3)} ${it.drop(3)}", Toast.LENGTH_LONG).show() }
             }
         }
 
@@ -120,8 +128,8 @@ class BridgeService : Service() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("bridge", "Couch TV remote", NotificationManager.IMPORTANCE_LOW))
-        val n = Notification.Builder(this, "bridge").setContentTitle("Couch TV").setContentText("Phone remote is on")
+        nm.createNotificationChannel(NotificationChannel("bridge", "HomeTV remote", NotificationManager.IMPORTANCE_LOW))
+        val n = Notification.Builder(this, "bridge").setContentTitle("HomeTV").setContentText("Phone remote is on")
             .setSmallIcon(R.drawable.icon).setOngoing(true).build()
         // The typed startForeground and FOREGROUND_SERVICE_TYPE_SPECIAL_USE only exist on Android 14.
         // Older TVs (Android 9 to 13) crash on them, so they get the plain call.
@@ -135,7 +143,11 @@ class BridgeService : Service() {
         multicast = runCatching { wm.createMulticastLock("couchtv-mdns").apply { setReferenceCounted(false); acquire() } }.getOrNull()
         startServer()
         Now.start()
-        Thread { runCatching { if (Adb.everAllowed || Adb.paired) Adb.ensure() } }.start()
+        Thread {
+            runCatching { if (Adb.everAllowed || Adb.paired) Adb.ensure() }
+            runCatching { Prefs.applyScreensaver() }
+            Shows.refreshLater()
+        }.start()
     }
 
     private fun startServer() {

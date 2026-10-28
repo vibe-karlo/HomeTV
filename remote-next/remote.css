@@ -1,0 +1,154 @@
+@font-face { font-family: "Switzer"; src: url("fonts/switzer-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Switzer"; src: url("fonts/switzer-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+
+:root {
+  --floor: #0d0c0b;
+  --surface: #1b1916;
+  --surface-hi: #2a2723;
+  --ink: #f6f3ee;
+  --ink-2: rgba(246, 243, 238, 0.66);
+  --ink-3: rgba(246, 243, 238, 0.38);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --pad-x: 18px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--floor); color: var(--ink); overflow: hidden; }
+body {
+  font-family: "Switzer", system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none; overscroll-behavior: none; touch-action: manipulation;
+}
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+svg { display: block; }
+
+#remote {
+  height: 100dvh; display: flex; flex-direction: column; gap: 16px;
+  padding: calc(env(safe-area-inset-top) + 14px) var(--pad-x) calc(env(safe-area-inset-bottom) + 18px);
+  max-width: 520px; margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- bar */
+
+#bar { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+#now { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#now-app { font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#now-what { font-size: 15px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.round {
+  flex: none; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--surface); box-shadow: var(--edge);
+  transition: background-color 120ms var(--ease);
+}
+.round svg { width: 22px; height: 22px; }
+.round:active { background: var(--surface-hi); }
+#power.off { color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- pad */
+
+#pad {
+  position: relative; flex: 1; min-height: 240px; border-radius: 34px;
+  background: #161411; box-shadow: var(--edge); overflow: hidden; touch-action: none;
+}
+#pad-touch {
+  position: absolute; left: 0; top: 0; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%;
+  background: rgba(246, 243, 238, 0.09); opacity: 0; pointer-events: none;
+  transition: opacity 260ms var(--ease), transform 160ms var(--ease);
+}
+#pad.touching #pad-touch { opacity: 1; transition: opacity 80ms linear; }
+#pad.pressed #pad-touch { transform: scale(0.82); background: rgba(246, 243, 238, 0.16); }
+#pad-hint {
+  position: absolute; left: 0; right: 0; bottom: 22px; text-align: center;
+  font-size: 15px; font-weight: 500; color: rgba(246, 243, 238, 0.46); transition: opacity 400ms var(--ease);
+}
+#pad.used #pad-hint { opacity: 0; }
+
+/* ---------------------------------------------------------------- keys */
+
+#keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+#keys button {
+  height: 74px; border-radius: 24px; background: var(--surface); box-shadow: var(--edge);
+  display: grid; place-items: center; transition: background-color 120ms var(--ease);
+}
+#keys button svg { width: 28px; height: 28px; }
+#keys button:active, #keys button.hit { background: var(--surface-hi); }
+
+/* ---------------------------------------------------------------- keyboard sheet */
+
+/* At the top, like Apple's remote: the phone's own keyboard comes up from the bottom and must not cover it. */
+#kbd {
+  position: fixed; left: 0; right: 0; top: 0; height: 100%; z-index: 20; display: flex; align-items: flex-start;
+  background: rgba(0, 0, 0, 0); pointer-events: none; transition: background-color 280ms var(--ease);
+}
+#kbd.open { background: rgba(0, 0, 0, 0.45); pointer-events: auto; }
+#kbd-sheet {
+  width: 100%; max-width: 520px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 14px) var(--pad-x) 20px;
+  background: var(--surface); border-radius: 0 0 26px 26px; box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateY(-110%); transition: transform 320ms var(--ease);
+}
+#kbd.open #kbd-sheet { transform: none; }
+#kbd-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; min-height: 36px; }
+#kbd-title { font-size: 17px; font-weight: 600; }
+#kbd-done { font-size: 17px; font-weight: 600; padding: 8px 4px; color: var(--ink-2); }
+#kbd-input {
+  width: 100%; height: 58px; padding: 0 18px; border-radius: 16px; border: 0; outline: none;
+  background: var(--floor); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  font: 500 20px "Switzer", system-ui, sans-serif; -webkit-user-select: text; user-select: text;
+}
+#kbd-input::placeholder { color: var(--ink-3); }
+#kbd-input:focus { box-shadow: inset 0 0 0 1.5px rgba(246, 243, 238, 0.35); }
+
+/* ---------------------------------------------------------------- apps sheet */
+
+#apps {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end;
+  background: rgba(0, 0, 0, 0); pointer-events: none; transition: background-color 280ms var(--ease);
+}
+#apps.open { background: rgba(0, 0, 0, 0.45); pointer-events: auto; }
+#apps-sheet {
+  width: 100%; max-width: 520px; margin: 0 auto; max-height: 82dvh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 18px var(--pad-x) calc(env(safe-area-inset-bottom) + 18px);
+  background: var(--surface); border-radius: 26px 26px 0 0; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateY(110%); transition: transform 320ms var(--ease);
+}
+#apps.open #apps-sheet { transform: none; }
+#apps-top { display: flex; align-items: center; justify-content: space-between; min-height: 36px; margin-bottom: 14px; font-size: 17px; font-weight: 600; }
+#apps-done { font-size: 17px; font-weight: 600; padding: 8px 4px; color: var(--ink-2); }
+#apps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.app { display: flex; flex-direction: column; gap: 7px; text-align: left; }
+.app i { display: block; aspect-ratio: 16 / 9; border-radius: 14px; background: #131210 center / cover no-repeat; box-shadow: var(--edge); }
+.app span { font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app:active i { opacity: 0.75; }
+
+/* ---------------------------------------------------------------- pairing */
+
+#pair {
+  position: fixed; inset: 0; z-index: 30; background: var(--floor);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  padding: 0 28px; text-align: center;
+}
+#pair[hidden] { display: none; }
+#pair h1 { margin: 0; font-size: 28px; font-weight: 600; }
+#pair p { margin: 10px 0 0; font-size: 17px; color: var(--ink-2); }
+#pair-code { position: absolute; opacity: 0; width: 1px; height: 1px; }
+#pair-boxes { display: flex; gap: 10px; margin-top: 30px; cursor: text; }
+#pair-boxes i {
+  width: 46px; height: 58px; border-radius: 14px; background: var(--surface); box-shadow: var(--edge);
+  display: grid; place-items: center; font: 600 26px "Switzer", system-ui, sans-serif; font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+#pair-boxes i.cur { box-shadow: inset 0 0 0 1.5px rgba(246, 243, 238, 0.45); }
+#pair-boxes i:nth-child(3) { margin-right: 10px; }
+#pair-msg { min-height: 24px; }
+
+/* ---------------------------------------------------------------- toast */
+
+#toast {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 70px); z-index: 40;
+  transform: translate(-50%, -8px); padding: 12px 18px; border-radius: 14px; max-width: calc(100% - 36px);
+  background: var(--surface-hi); box-shadow: var(--edge); font-size: 15px; font-weight: 500;
+  opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration: 1ms !important; } }

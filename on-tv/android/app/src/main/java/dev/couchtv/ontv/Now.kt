@@ -46,7 +46,13 @@ object Now {
             .put("picture", JSONObject.NULL)
             .put("mode", "on-tv")
             .put("adb", Adb.connected)
+            .put("keyboard", keyboard)
     }
+
+    /** True while the TV shows its on-screen keyboard: a text field wants typing, so phones open theirs. */
+    @Volatile var keyboard = false
+        private set
+    private val kbdLoop = Executors.newSingleThreadScheduledExecutor()
 
     /** Sends the current state to every listener. */
     fun push() {
@@ -64,13 +70,26 @@ object Now {
                 tick++
                 if (!Adb.connected && (Adb.everAllowed || Adb.paired) && tick % 15 == 1) runCatching { Adb.ensure() }
                 front = Tv.frontPackage()
-                if (tick % 2 == 0) media = readMedia()
+                // "What's playing" is a heavy dumpsys: only while a phone is there to show it.
+                if (tick % 2 == 0) media = if (listeners.isEmpty()) null else readMedia()
                 val v = Tv.volume()
                 val sig = listOf(front, Tv.isOn, v["level"], v["muted"], media?.optString("title"), media?.optString("state"),
                     sleepEnds, who, Adb.connected).joinToString("|")
                 if (sig != lastSig) { lastSig = sig; push() }
             } catch (e: Exception) { android.util.Log.w("couchtv", "now loop: ${e.message}") }
         }, 1, 4, TimeUnit.SECONDS)
+        // Only while a phone listens: one quick read of the input method each second.
+        kbdLoop.scheduleWithFixedDelay({
+            try {
+                // No text fields on our own home screen, and each read costs this small TV a little.
+                if (listeners.isEmpty() || !Adb.connected || front == null || front in Apps.HOME_PACKAGES || front == BuildConfig.APPLICATION_ID) {
+                    if (keyboard) { keyboard = false; push() }
+                    return@scheduleWithFixedDelay
+                }
+                val shown = Adb.shell("dumpsys input_method | grep -m1 mInputShown", 3000).contains("mInputShown=true")
+                if (shown != keyboard) { keyboard = shown; push() }
+            } catch (e: Exception) { }
+        }, 2, 2, TimeUnit.SECONDS)
     }
 
     private fun readMedia(): JSONObject? {

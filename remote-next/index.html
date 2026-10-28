@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0d0c0b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HomeTV">
+  <title>HomeTV Remote</title>
+  <link rel="stylesheet" href="remote.css">
+</head>
+<body>
+  <main id="remote">
+    <header id="bar">
+      <div id="now">
+        <b id="now-app">Philips TV</b>
+        <span id="now-what">Connecting</span>
+      </div>
+      <button id="apps-open" class="round" aria-label="Apps"></button>
+      <button id="kbd-open" class="round" aria-label="Type on the TV"></button>
+      <button id="power" class="round" aria-label="Turn the TV off"></button>
+    </header>
+
+    <section id="pad" aria-label="Touch pad: swipe to move, tap to select">
+      <span id="pad-touch"></span>
+      <span id="pad-hint">Swipe to move · Tap to select</span>
+    </section>
+
+    <section id="keys">
+      <button data-key="back" aria-label="Back"></button>
+      <button data-key="home" aria-label="Home"></button>
+      <button data-key="play_pause" aria-label="Play or pause"></button>
+      <button data-vol="mute" aria-label="Mute"></button>
+      <button data-vol="down" aria-label="Volume down"></button>
+      <button data-vol="up" aria-label="Volume up"></button>
+    </section>
+  </main>
+
+  <section id="kbd" aria-label="Type on the TV" aria-hidden="true">
+    <div id="kbd-sheet">
+      <div id="kbd-top">
+        <span id="kbd-title">Typing on the TV</span>
+        <button id="kbd-done">Done</button>
+      </div>
+      <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+        enterkeyhint="search" placeholder="Tap here to type">
+    </div>
+  </section>
+
+  <section id="apps" aria-label="Apps" aria-hidden="true">
+    <div id="apps-sheet">
+      <div id="apps-top"><span>Apps</span><button id="apps-done">Done</button></div>
+      <div id="apps-grid"></div>
+    </div>
+  </section>
+
+  <section id="pair" hidden>
+    <h1>Pair this phone</h1>
+    <p>Type the 6-digit code shown on the TV.</p>
+    <input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="Pairing code">
+    <div id="pair-boxes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p id="pair-msg" role="status"></p>
+  </section>
+
+  <div id="toast" role="status"></div>
+  <script src="remote.js"></script>
+</body>
+</html>

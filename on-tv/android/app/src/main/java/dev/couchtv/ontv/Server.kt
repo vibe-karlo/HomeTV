@@ -42,7 +42,18 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             uri == "/tv/config.js" -> newFixedLengthResponse(Response.Status.OK, "application/javascript",
                 "window.COUCH_CONFIG = " + Store.publicConfig() + ";\n").noCache()
             uri.startsWith("/tv/") -> staticOrIndex("www/tv", uri.removePrefix("/tv/"), inject = false)
-            else -> staticOrIndex("www/remote", uri.removePrefix("/"), inject = true)
+            uri.startsWith("/aerials/file/") -> aerial(s, uri.removePrefix("/aerials/file/"))
+            // Show artwork, shrunk and kept on the TV (pictures only, so no pairing needed).
+            uri == "/img" -> Img.get(s.parameters["u"]?.firstOrNull().orEmpty(), s.parameters["w"]?.firstOrNull()?.toIntOrNull() ?: 640)
+                ?.let { newFixedLengthResponse(Response.Status.OK, "image/webp", java.io.ByteArrayInputStream(it), it.size.toLong())
+                    .apply { addHeader("Cache-Control", "max-age=604800") } }
+                ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+            // App banners for the phone's app list (pictures only, so no pairing needed).
+            uri.startsWith("/art/banner/") -> AppArt.banner(uri.removePrefix("/art/banner/"))
+                ?.let { newFixedLengthResponse(Response.Status.OK, "image/jpeg", java.io.ByteArrayInputStream(it), it.size.toLong()) }
+                ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+            // The phone remote pairs by itself, so it gets no pairing shim.
+            else -> staticOrIndex("www/remote", uri.removePrefix("/"), inject = false)
         }
     } catch (e: ApiError) {
         json(e.status, err(e.message ?: "error"))
@@ -80,6 +91,14 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 if (a) o.put("tv_connected", true).put("adb", Adb.connected)
                 return json(200, o)
             }
+            // Turns the screen on, never off, so it needs no pairing: the iPhone Shortcut calls it after
+            // its Wake-on-LAN packet has woken the TV's network from deep standby.
+            "/api/wake" -> {
+                if (m != Method.POST) throw ApiError(405, "POST only")
+                val on = Tv.powerOn()
+                Now.push()
+                return json(if (on) 200 else 503, ok().put("power", if (Tv.isOn) "on" else "off"))
+            }
             "/api/pair/start" -> {
                 if (m != Method.POST) throw ApiError(405, "POST only")
                 Auth.newPin()
@@ -106,6 +125,31 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 .put("name", Store.tvName()).put("paired", true).put("connected", true).put("adb", Adb.connected)
                 .put("picture", false).put("power", if (Tv.isOn) "on" else "off"))))
             "GET /api/config" -> json(200, ok(Store.publicConfig()))
+            // The home screen: its rows (Continue Watching first), the aerials on the TV, and this TV's address.
+            "GET /api/home-data" -> {
+                val shows = Shows.rows()
+                val rows = JSONArray().put(Shows.continueRow())
+                shows.optJSONArray("rows")?.let { r -> for (i in 0 until r.length()) rows.put(r.get(i)) }
+                json(200, ok().put("rows", rows).put("aerials", Aerials.list()).put("address", App.lanAddress() ?: JSONObject.NULL)
+                    .put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
+                    .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Sports.NOW_CHANNELS) else JSONArray())
+                    .put("port", Store.port).put("version", BuildConfig.VERSION_NAME))
+            }
+            "POST /api/open-show" -> json(200, Shows.open(body(s)))
+            "GET /api/sport" -> json(200, ok().put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
+                .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Sports.NOW_CHANNELS) else JSONArray()))
+            "POST /api/continue/remove" -> { Shows.forget(body(s).optString("id")); json(200, ok()) }
+            // The TV's apps in the home screen's dock order, without the ones hidden there.
+            "GET /api/tv-apps" -> {
+                val p = Prefs.json()
+                val order = p.optJSONArray("dockOrder")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+                val hidden = p.optJSONArray("hidden")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
+                val all = AppArt.tvApps().map { it.activityInfo.packageName to AppArt.label(it) }.filter { it.first !in hidden }
+                    .sortedBy { order.indexOf(it.first).let { i -> if (i < 0) 999 else i } }
+                json(200, ok().put("apps", JSONArray(all.map { (pkg, name) -> JSONObject().put("package", pkg).put("name", name).put("banner", "/art/banner/$pkg") })))
+            }
+            // A pairing code for a new phone, shown in the home screen's Settings instead of the setup screen.
+            "POST /api/pair/new" -> json(200, ok().put("pin", Auth.newPin()).put("expires_in", 180))
             "POST /api/key" -> {
                 val b = body(s)
                 val key = b.optString("key").ifEmpty { throw ApiError(400, "key is required") }
@@ -406,6 +450,21 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         val stream = assets.open(path)
         newChunkedResponse(Response.Status.OK, mime(path), stream).noCache()
     } catch (e: IOException) { newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found") }
+
+    /** An aerial clip kept on the TV, with byte ranges so the home screen's video can stream and seek. */
+    private fun aerial(s: IHTTPSession, name: String): Response {
+        val f = Aerials.file(URLDecoder.decode(name, "UTF-8")) ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+        val size = f.length()
+        val m = Regex("bytes=(\\d*)-(\\d*)").find(s.headers["range"] ?: "")
+        if (m == null) return newFixedLengthResponse(Response.Status.OK, "video/mp4", f.inputStream(), size).apply { addHeader("Accept-Ranges", "bytes") }
+        val start = m.groupValues[1].toLongOrNull() ?: (size - (m.groupValues[2].toLongOrNull() ?: size)).coerceAtLeast(0)
+        val end = (if (m.groupValues[1].isNotEmpty()) m.groupValues[2].toLongOrNull() else null)?.coerceAtMost(size - 1) ?: (size - 1)
+        if (start >= size) return newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "").apply { addHeader("Content-Range", "bytes */$size") }
+        val inp = f.inputStream().apply { skip(start) }
+        return newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, "video/mp4", inp, end - start + 1).apply {
+            addHeader("Accept-Ranges", "bytes"); addHeader("Content-Range", "bytes $start-$end/$size")
+        }
+    }
 
     private fun mime(p: String) = when (p.substringAfterLast('.').lowercase()) {
         "html" -> "text/html; charset=utf-8"; "js", "mjs" -> "application/javascript"; "css" -> "text/css"
