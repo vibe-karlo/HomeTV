@@ -30,6 +30,7 @@ rsync -a --exclude 'preview-data.js' --exclude 'aerials.js' --exclude 'aerial-ca
 rsync -a "$ROOT/remote-next/" "$B/web/remote/"
 
 # Apple's aerial catalog, for the TV app to download from.
+mkdir -p "$ROOT/on-tv/android/app/src/main/assets"
 python3 -I -c "
 import json, sys
 s = open(sys.argv[1]).read()
