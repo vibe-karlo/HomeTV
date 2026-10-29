@@ -18,7 +18,7 @@
   </defs>
   <rect width="1024" height="1024" fill="url(#floor)"/>
   <!-- the remote rises from the bottom edge -->
-  <rect x="292" y="196" width="440" height="980" rx="150" fill="url(#body)"/>
+  <rect x="292" y="196" width="440" height="980" rx="88" fill="url(#body)"/>
   <!-- clickpad: a dark ring, four direction dots, a light centre -->
   <circle cx="512" cy="430" r="158" fill="url(#key)"/>
   <circle cx="512" cy="430" r="74" fill="url(#body)"/>
