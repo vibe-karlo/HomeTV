@@ -92,7 +92,8 @@ body.browse #hero-desc { opacity: 1; transform: none; max-height: 76px; margin-t
   transition: background-color 200ms var(--ease), color 200ms var(--ease), transform 260ms var(--ease), opacity 300ms var(--ease);
 }
 #hero-watch.focus { background: #f2efea; color: #15130f; transform: scale(1.06); }
-body.browse #hero-watch, body.aerial #hero-watch, #hero-watch.none { opacity: 0; }
+/* Only there once you move up to it: it fades in on focus and out when you leave, holding its place so nothing shifts. */
+#hero-watch:not(.focus), body.browse #hero-watch, body.aerial #hero-watch, #hero-watch.none { opacity: 0; }
 .swap #hero-title, .swap #hero-meta, .swap #hero-desc { opacity: 0.001; }
 #hero-title, #hero-meta { transition: opacity 300ms var(--ease); }
 
