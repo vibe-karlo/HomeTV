@@ -17,6 +17,9 @@ object Weather {
 
     fun clear() { at = 0; data = null }
 
+    /** A real zone name ("Europe/Zagreb"), else the place's own: Open-Meteo refuses anything else ("Croatia"). */
+    private fun zone(tz: String) = if (tz in java.util.TimeZone.getAvailableIDs()) tz else "auto"
+
     @Synchronized fun get(): JSONObject? {
         if (data != null && System.currentTimeMillis() - at < 30 * 60_000) return JSONObject(data.toString())
         val w = Store.weather()
@@ -24,7 +27,7 @@ object Weather {
             val url = "https://api.open-meteo.com/v1/forecast?latitude=${w.getDouble("lat")}&longitude=${w.getDouble("lon")}" +
                 "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min" +
                 "&hourly=temperature_2m,weather_code,is_day&forecast_hours=7" +
-                "&timezone=${URLEncoder.encode(w.optString("timezone", "UTC"), "UTF-8")}&forecast_days=1"
+                "&timezone=${URLEncoder.encode(zone(w.optString("timezone")), "UTF-8")}&forecast_days=1"
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 6000; c.readTimeout = 8000
             val j = JSONObject(c.inputStream.bufferedReader().readText()); c.disconnect()

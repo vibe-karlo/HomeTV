@@ -113,7 +113,8 @@ class Tv:
         raise last
 
     def shell(self, cmd, timeout_s=60):
-        return self._retry("shell", lambda: self.dev.shell(cmd, timeout_s=timeout_s, read_timeout_s=timeout_s))
+        # A long, silent command (decoding the app, pm install) must not trip the 30 s read timeout.
+        return self._retry("shell", lambda: self.dev.shell(cmd, transport_timeout_s=timeout_s, read_timeout_s=timeout_s, timeout_s=timeout_s))
 
     def close(self):
         try:
@@ -147,7 +148,7 @@ def copy_by_base64(tv, data, dest):
         tv.shell(f"echo -n '{b64[i:i + B64_STEP]}' > {TMP}.b64/{n:05d}")
         if n % 25 == 0 or n == total:
             say(f"copied {n}/{total} parts")
-    tv.shell(f"cat {TMP}.b64/* | base64 -d > {dest}; rm -rf {TMP}.b64", 120)
+    tv.shell(f"cat {TMP}.b64/* | base64 -d > {dest}; rm -rf {TMP}.b64", 300)
 
 
 def install(tv, path):

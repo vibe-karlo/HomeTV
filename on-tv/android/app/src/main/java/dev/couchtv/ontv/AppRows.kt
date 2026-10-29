@@ -59,23 +59,46 @@ object AppRows {
         return found.values.sortedWith(compareBy({ it.pkg }, { it.name }))
     }
 
-    /** The rows to show: the ones picked in Settings, or (nothing picked yet) the ones the apps asked for. Read at most every 2 min. */
-    @Synchronized fun shown(): JSONArray {
-        if (System.currentTimeMillis() - at < 120_000) return JSONArray(cached.toString())
+    /** The rows to show: the ones picked in Settings, or (nothing picked yet) the ones the apps asked for. */
+    fun shown(): JSONArray = JSONArray(build().first.toString())
+
+    /**
+     * What the apps say you are in the middle of, from every app row: a whole "Continue Watching" row
+     * (Stremio's) or single cards an app marks as resumable (Netflix's "Nastavite gledati ..."). These go
+     * into HomeTV's one Continue Watching row instead of a row per app.
+     */
+    fun resuming(): JSONArray = JSONArray(build().second.toString())
+
+    @Volatile private var resume: JSONArray = JSONArray()
+    private val RESUME = Regex("^(continue|keep watching|resume|nastavi|nastavite|nastavak|weiter|reprendre|seguir)", RegexOption.IGNORE_CASE)
+
+    /** Read at most every 2 min. */
+    @Synchronized private fun build(): Pair<JSONArray, JSONArray> {
+        if (System.currentTimeMillis() - at < 120_000) return cached to resume
         val picked = Prefs.json().optJSONArray("appRows")?.let { a -> (0 until a.length()).map { a.optString(it) } }
         val keep = HashSet<String>()
         val newLinks = HashMap<String, Pair<String, String?>>()
         val out = JSONArray()
+        val res = JSONArray()
         val all = list()
         val rows = if (picked != null) picked.mapNotNull { k -> all.firstOrNull { it.key == k } } else all.filter { it.browsable }
-        for (r in rows) {
+        for (r in all) {
             val items = items(r, keep, newLinks)
-            if (items.length() > 0) out.put(JSONObject().put("id", "app:" + r.key).put("title", r.title).put("items", items))
+            val whole = RESUME.containsMatchIn(r.name)
+            val rest = JSONArray()
+            for (i in 0 until items.length()) {
+                val it = items.getJSONObject(i)
+                if (whole || RESUME.containsMatchIn(it.optString("description"))) res.put(it) else rest.put(it)
+            }
+            if (r in rows && rest.length() > 0) out.put(JSONObject().put("id", "app:" + r.key).put("title", r.title).put("items", rest))
         }
+        // Keep the Settings order for the rows that show.
+        val order = rows.map { "app:" + it.key }
+        val sorted = (0 until out.length()).map { out.getJSONObject(it) }.sortedBy { order.indexOf(it.optString("id")) }
         links = newLinks
         dir.listFiles()?.forEach { if (it.name !in keep && !it.name.endsWith(".part")) it.delete() }
-        cached = out; at = System.currentTimeMillis()
-        return JSONArray(out.toString())
+        cached = JSONArray(sorted); resume = res; at = System.currentTimeMillis()
+        return cached to resume
     }
 
     /** For Settings: every row, and whether it shows. */
@@ -83,7 +106,7 @@ object AppRows {
         val picked = Prefs.json().optJSONArray("appRows")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }
         return JSONArray(list().map { r ->
             JSONObject().put("key", r.key).put("title", r.title).put("app", label(r.pkg)).put("count", r.count)
-                .put("shown", picked?.contains(r.key) ?: r.browsable)
+                .put("shown", picked?.contains(r.key) ?: r.browsable).put("resume", RESUME.containsMatchIn(r.name))
         })
     }
 

@@ -28,7 +28,7 @@ trap '"$PY" "$ADB" shell "svc power stayon false" >/dev/null 2>&1 || true' EXIT
 echo "2. Installing $(basename "$APK") ($(du -h "$APK" | cut -f1 | tr -d ' '))"
 # Big pushes stall on this kind of TV: copy it as base64 text, checked with md5 before installing.
 FORCE_B64=1 "$PY" "$ADB" install "$APK"
-echo "   on the TV: $(tv "dumpsys package $PKG | grep -m1 versionName" | tr -d ' ')"
+echo "   on the TV: $(tv "dumpsys package $PKG | grep versionName" | head -1 | tr -d ' ')"
 
 echo "3. Permissions for Continue Watching and now playing"
 tv "pm grant $PKG android.permission.READ_TV_LISTINGS" >/dev/null 2>&1 || true

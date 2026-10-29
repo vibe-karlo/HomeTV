@@ -18,6 +18,7 @@
   button.go { background: var(--amber); color: #111; }
   .row { display: flex; gap: 10px; } .row > * { flex: 1; }
   .status { font-weight: 600; } .ok { color: #7ddc8a; } .bad { color: var(--bad); }
+  .found { margin: 8px 0 0; font-size: 14px; }
   .msg { min-height: 20px; margin-top: 8px; color: var(--amber); font-size: 14px; }
   a { color: var(--amber); } .check { display: flex; gap: 10px; align-items: center; margin-top: 12px; } .check input { width: auto; }
 </style>
@@ -59,9 +60,9 @@
     <h2>Household</h2>
     <label for="tv-name">TV name</label><input id="tv-name" maxlength="30">
     <label for="people">People (comma separated)</label><input id="people" maxlength="200">
-    <label for="place">Weather place name</label><input id="place" maxlength="40">
-    <div class="row"><div><label for="lat">Latitude</label><input id="lat" inputmode="decimal"></div><div><label for="lon">Longitude</label><input id="lon" inputmode="decimal"></div></div>
-    <div class="row"><div><label for="tz">Time zone</label><input id="tz" placeholder="Australia/Sydney"></div><div><label for="country">Country (2 letters)</label><input id="country" maxlength="2"></div></div>
+    <div class="row"><div><label for="place">City</label><input id="place" maxlength="40" autocomplete="address-level2"></div>
+      <div><label for="country">Country</label><input id="country" maxlength="40" placeholder="Croatia or HR" autocomplete="country-name"></div></div>
+    <p class="found" id="found"></p>
     <button class="go" id="save">Save</button>
     <div class="msg" id="save-msg" role="status"></div>
   </section>
@@ -98,8 +99,9 @@
     api('GET', '/api/settings').then(function (j) {
       $('tv-name').value = j.tv_name || '';
       $('people').value = (j.people || []).map(function (p) { return p.name; }).join(', ');
-      $('place').value = j.weather.place || ''; $('lat').value = j.weather.lat; $('lon').value = j.weather.lon;
-      $('tz').value = j.weather.timezone || ''; $('country').value = j.country || '';
+      $('place').value = j.weather.place || ''; $('country').value = j.country || '';
+      saved = j.weather; saved.country = j.country || '';
+      $('found').textContent = j.weather.place ? 'Weather for ' + j.weather.place + ' (' + j.weather.lat.toFixed(2) + ', ' + j.weather.lon.toFixed(2) + ', ' + (j.weather.timezone || 'UTC') + ').' : 'No weather place yet.';
       $('ask-on').checked = !!j.ask.enabled;
       $('ask-state').textContent = j.ask.has_key ? 'A key is saved. Model: ' + j.ask.model + '.' : 'No key saved.';
       $('phones').textContent = j.phones + (j.phones === 1 ? ' phone is' : ' phones are') + ' paired with this TV.';
@@ -126,12 +128,34 @@
       .then(function (j) { showAdb(j.adb); $('adb-msg').textContent = j.connected ? 'Paired and connected.' : 'Paired. Connecting next.'; })
       .catch(function (e) { $('adb-msg').textContent = e.message; });
   };
+  var saved = {};
+  // City and country to coordinates and time zone, with Open-Meteo's free place search (the same
+  // service the weather comes from). The country can be a name ("Croatia") or a code ("HR").
+  function findPlace(city, country) {
+    var c = country.trim().toLowerCase();
+    var url = 'https://geocoding-api.open-meteo.com/v1/search?count=10&language=en&format=json&name=' + encodeURIComponent(city);
+    if (/^[a-z]{2}$/.test(c)) url += '&countryCode=' + c.toUpperCase();
+    return fetch(url).then(function (r) { if (!r.ok) throw new Error('The place search did not answer. Try again.'); return r.json(); }).then(function (j) {
+      var hit = (j.results || []).filter(function (p) {
+        return !c || (p.country_code || '').toLowerCase() === c || (p.country || '').toLowerCase().indexOf(c) === 0;
+      })[0];
+      if (!hit) throw new Error('No place called ' + city + (country ? ' in ' + country : '') + ' was found.');
+      return hit;
+    });
+  }
   $('save').onclick = function () {
     var people = $('people').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean).map(function (n, i) { return { id: 'person' + (i + 1), name: n }; });
-    var body = { tv_name: $('tv-name').value, people: people, country: $('country').value.toUpperCase() };
-    var lat = parseFloat($('lat').value), lon = parseFloat($('lon').value);
-    if (!isNaN(lat) && !isNaN(lon)) body.weather = { lat: lat, lon: lon, place: $('place').value, timezone: $('tz').value || 'UTC' };
-    api('POST', '/api/settings', body).then(function () { $('save-msg').textContent = 'Saved.'; load(); }).catch(function (e) { $('save-msg').textContent = e.message; });
+    var body = { tv_name: $('tv-name').value, people: people };
+    var city = $('place').value.trim(), country = $('country').value.trim();
+    var same = city === (saved.place || '') && country.toUpperCase() === (saved.country || '') && saved.timezone && saved.timezone.indexOf('/') > 0;
+    $('save-msg').textContent = city && !same ? 'Finding ' + city + '…' : '';
+    (city && !same ? findPlace(city, country) : Promise.resolve(null)).then(function (p) {
+      if (p) {
+        body.country = p.country_code;
+        body.weather = { lat: p.latitude, lon: p.longitude, place: p.name, timezone: p.timezone || 'UTC' };
+      }
+      return api('POST', '/api/settings', body);
+    }).then(function () { $('save-msg').textContent = 'Saved.'; load(); }).catch(function (e) { $('save-msg').textContent = e.message; });
   };
   $('ask-save').onclick = function () {
     var body = { ask_enabled: $('ask-on').checked };

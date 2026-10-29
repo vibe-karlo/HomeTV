@@ -138,6 +138,8 @@ window.HOME_READY.then(function () {
         ? "None of your apps has put a row on Android TV\u2019s home screen. Open MAXtv or EON once; they add theirs when they run."
         : "HomeTV needs the TV listings permission to see them. Connect debugging once in setup, or allow it when the TV asks." }];
       return appRows.map(function (r) {
+        if (r.resume) return { label: r.title, value: "In Continue Watching",
+          help: "What you are in the middle of in " + r.app + " sits in the one Continue Watching row." };
         return { label: r.title, tick: r.shown, value: r.count + (r.count === 1 ? " item" : " items"),
           help: r.shown ? "Shown under Continue Watching. Select to hide it." : "Select to show it under Continue Watching.",
           act: function () {

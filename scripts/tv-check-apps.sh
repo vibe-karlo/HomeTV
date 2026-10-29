@@ -10,19 +10,29 @@ PY="$ROOT/.venv/bin/python"
 [ -n "$TV_IP" ] || { echo "Set TV_IP to the TV's address."; exit 1; }
 export TV_IP
 tv() { "$PY" "$ROOT/tv-home/tools/tvadb.py" shell "$1"; }
+# The ADB shell itself may not read other apps' rows on this TV; say so in one line instead of a stack trace.
+query() {
+  out=$(tv "content query --uri $1 --projection $2 --where \"package_name='$3'\" 2>&1")
+  case "$out" in
+    *SecurityException*) echo "     the ADB shell is not allowed to read these (HomeTV can, once granted)";;
+    *"No result found"*|"") echo "     none";;
+    *) echo "$out" | sed 's/^/     /';;
+  esac
+}
 [ $# -gt 0 ] || set -- hr.telekom.android.maxtvp uc.flex.hr.smarttv
 
 "$PY" "$ROOT/tv-home/tools/tvadb.py" ping >/dev/null
 for P in "$@"; do
   echo "== $P"
   if ! tv "pm path $P" | grep -q package:; then echo "   not installed"; continue; fi
-  echo "   version: $(tv "dumpsys package $P | grep -m1 versionName" | tr -d ' ')"
+  echo "   version: $(tv "dumpsys package $P | grep versionName" | head -1 | tr -d ' ')"
   echo "   home-screen rows (preview channels):"
-  tv "content query --uri content://android.media.tv/channel --projection _id:display_name:type:browsable --where \"package_name='$P'\"" | sed 's/^/     /' || echo "     (the shell may not read other apps' rows; HomeTV's own view is below)"
+  query "content://android.media.tv/channel" "_id:display_name:type:browsable" "$P"
   echo "   Watch Next entries:"
-  tv "content query --uri content://android.media.tv/watch_next_program --projection title:watch_next_type --where \"package_name='$P'\"" | sed 's/^/     /' || true
+  query "content://android.media.tv/watch_next_program" "title:watch_next_type" "$P"
   echo "   live TV source:"
-  tv "pm query-services --components -a android.media.tv.TvInputService" | grep "$P" | sed 's/^/     /' || echo "     none"
+  src=$(tv "pm query-services --components -a android.media.tv.TvInputService" | grep "$P" || true)
+  [ -n "$src" ] && echo "$src" | sed 's/^/     /' || echo "     none"
   echo "   links it opens (schemes and hosts):"
   tv "dumpsys package $P" | grep -E "Scheme: |Authority: " | sort -u | head -20 | sed 's/^/     /' || true
 done

@@ -262,12 +262,16 @@ window.HOME_READY.then(function () {
           var c = document.createElement("div"); c.className = "card focusable";
           var p = it.progress ? '<span class="progress"><i style="width:' + Math.round(it.progress * 100) + '%"></i></span>' : "";
           if (p) c.classList.add("has-progress");
+          // An app's own picture usually carries its title already (Netflix, MAXtv): show it clean, named by the caption.
+          var own = fromApp(it) && !!it.bg;
+          if (own) c.classList.add("own-art");
           c.innerHTML = '<span class="scrim"></span><span class="logo"></span>' + p +
             '<span class="dim"></span><span class="sheen"></span><span class="caption"></span>';
           c.querySelector(".caption").textContent = (it.episode ? it.title + " · " + it.episode : it.title + (it.year ? " · " + it.year : "")) +
             (it.rating ? " · IMDb " + it.rating : "");
           var logo = art(it.logo, 320);
           (logo ? load(logo) : Promise.reject()).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
+            if (own) return;
             var f = document.createElement("span"); f.className = "fallback"; f.textContent = it.title; c.insertBefore(f, c.querySelector(".dim"));
             // An app's card with no picture still says where it plays.
             if (fromApp(it) && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }

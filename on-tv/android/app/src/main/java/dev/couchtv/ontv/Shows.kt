@@ -171,8 +171,15 @@ object Shows {
             if (!titles.add(Finder.norm(w.optString("title")))) continue
             items.put(w)
         }
-        val h = Store.history()
         val seen = HashSet<String>(removed())
+        // Then what the other apps' home-screen rows say you are in the middle of (Stremio, Netflix).
+        val res = AppRows.resuming()
+        for (i in 0 until res.length()) {
+            val r = res.getJSONObject(i)
+            if (!seen.add(r.optString("id")) || !titles.add(Finder.norm(r.optString("title")))) continue
+            items.put(r)
+        }
+        val h = Store.history()
         for (i in 0 until h.length()) {
             val it = h.getJSONObject(i)
             if (!it.optBoolean("home")) continue
@@ -183,7 +190,7 @@ object Shows {
                 .put("description", it.optString("description")).put("bg", it.optString("bg")).put("logo", it.optString("logo"))
                 .put("rating", it.optString("rating"))
                 .put("source", it.optString("opens")).put("opens", it.optString("opens")))
-            if (items.length() >= 16) break
+            if (items.length() >= 24) break
         }
         return JSONObject().put("id", "continue").put("title", "Continue Watching").put("items", items)
     }
