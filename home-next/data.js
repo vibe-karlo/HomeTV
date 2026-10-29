@@ -39,7 +39,11 @@
   if (last && last.rows) {
     window.HOME_DATA = shape(last); window.AERIALS = last.aerials || [];
     window.HOME_READY = Promise.resolve();
-    fresh.then(function (d) { if (d.rows && d.rows.length && window.HOME_FRESH) window.HOME_FRESH(shape(d), d.aerials || []); });
+    // home.js may not have set HOME_FRESH yet when this lands: then it picks HOME_PENDING up itself.
+    fresh.then(function (d) {
+      if (!d.rows || !d.rows.length) return;
+      if (window.HOME_FRESH) window.HOME_FRESH(shape(d), d.aerials || []); else window.HOME_PENDING = [shape(d), d.aerials || []];
+    });
   } else {
     window.HOME_READY = fresh.then(function (d) { window.HOME_DATA = shape(d); window.AERIALS = d.aerials || []; });
   }

@@ -126,7 +126,8 @@ object Philips {
             try {
                 val code = c.responseCode
                 if (code == 401 && auth && attempt == 0) { header = digest(c.getHeaderField("WWW-Authenticate") ?: throw ApiError(502, "The TV asked for a login it did not describe"), method, path); continue }
-                if (code == 401) { Log.w(TAG, "philips: not allowed on $path"); throw ApiError(409, "The TV no longer knows HomeTV. Pair again.") }
+                // The TV forgot HomeTV (reset, or pairing removed): forget it too, so the phone offers pairing again.
+                if (code == 401) { Log.w(TAG, "philips: not allowed on $path"); if (auth) forget(); throw ApiError(409, "The TV no longer knows HomeTV. Pair again.") }
                 if (code !in 200..299) throw ApiError(502, "The TV answered $code to $path")
                 return c.inputStream.bufferedReader().readText()
             } finally { c.disconnect() }

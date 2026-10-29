@@ -19,6 +19,8 @@ import java.net.URLDecoder
 class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
     private val assets = ctx.assets
 
+    override fun stop() { pinger.shutdownNow(); super.stop() }
+
     override fun useGzipWhenAccepted(r: Response) = false   // gzip would hold back server-sent events
 
     override fun serve(session: IHTTPSession): Response {
@@ -286,7 +288,8 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
     // gets a pong back from the phone, so an idle remote stays connected instead of reconnecting.
     private val sockets = java.util.concurrent.CopyOnWriteArraySet<Socket>()
     private val pinger = java.util.concurrent.Executors.newSingleThreadScheduledExecutor().apply {
-        scheduleWithFixedDelay({ sockets.forEach { s -> runCatching { s.ping(PING) }.onFailure { sockets.remove(s) } } }, 3, 3, java.util.concurrent.TimeUnit.SECONDS)
+        // A ping keeps the server side open; the "alive" message tells the phone (which cannot see pings) the line works.
+        scheduleWithFixedDelay({ sockets.forEach { s -> runCatching { s.ping(PING); s.send(ALIVE) }.onFailure { sockets.remove(s) } } }, 3, 3, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
@@ -296,6 +299,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         override fun onPong(pong: NanoWSD.WebSocketFrame?) {}
         override fun onException(e: IOException?) { sockets.remove(this); Now.unlisten(fn) }
         override fun onMessage(frame: NanoWSD.WebSocketFrame) {
+            Now.used()
             val reply = try {
                 val m = JSONObject(frame.textPayload)
                 when {
@@ -402,5 +406,5 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             409 -> "Conflict"; 413 -> "Payload Too Large"; 501 -> "Not Implemented"; 502 -> "Bad Gateway"; 503 -> "Service Unavailable"; 504 -> "Gateway Timeout"; else -> "Status" }
     }
 
-    companion object { private const val TAG = "couchtv.server"; private val PING = byteArrayOf(1) }
+    companion object { private const val TAG = "couchtv.server"; private val PING = byteArrayOf(1); private const val ALIVE = "{\"event\":\"alive\"}" }
 }

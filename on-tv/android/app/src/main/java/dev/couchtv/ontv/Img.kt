@@ -41,7 +41,7 @@ object Img {
                 if (Tv.isOn) return                       // someone turned the TV on: stop
                 val it = items.getJSONObject(i)
                 get(it.optString("bg"), 480); get(it.optString("logo"), 320)
-                if (i < 4) get(it.optString("bg"), 1280)
+                if (i < 4) { get(it.optString("bg"), 1280); get(it.optString("logo"), 640) }   // the hero's sizes
             }
         }
     }
@@ -55,13 +55,14 @@ object Img {
         val f = File(dir, "$key.webp")
         if (f.isFile) { f.setLastModified(System.currentTimeMillis()); return f.readBytes() }
         synchronized(locks.getOrPut(key) { Any() }) {
-            if (f.isFile) return f.readBytes()
-            val raw = fetch(url) ?: return null
-            val out = decode.acquireAndRun { shrink(raw, w) } ?: return null
-            val tmp = File(dir, "$key.tmp"); tmp.writeBytes(out); tmp.renameTo(f)
-            if (++written % 40 == 0) trim()
-            locks.remove(key)
-            return out
+            try {
+                if (f.isFile) return f.readBytes()
+                val raw = fetch(url) ?: return null
+                val out = decode.acquireAndRun { shrink(raw, w) } ?: return null
+                val tmp = File(dir, "$key.tmp"); tmp.writeBytes(out); tmp.renameTo(f)
+                if (++written % 40 == 0) trim()
+                return out
+            } finally { locks.remove(key) }   // also when the fetch failed, or the lock map grows for good
         }
     }
 

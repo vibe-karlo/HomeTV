@@ -59,12 +59,16 @@ object Store {
     const val TV_ID = "this-tv"
 
     // ---------- watch history (plays started from the phone, and what apps report) ----------
-    @Synchronized fun history(): JSONArray = (readJson("history.json") as? JSONArray) ?: JSONArray()
+    // Kept parsed in memory: it is read on every return to the home screen. 150 plays is months of TV.
+    @Volatile private var historyCache: JSONArray? = null
+    // Callers only read it, so they share the one copy.
+    @Synchronized fun history(): JSONArray = historyCache ?: ((readJson("history.json") as? JSONArray) ?: JSONArray()).also { historyCache = it }
 
     @Synchronized fun addHistory(item: JSONObject) {
         val old = history()
         val out = JSONArray().put(item)
-        for (i in 0 until minOf(old.length(), 499)) out.put(old.get(i))
+        for (i in 0 until minOf(old.length(), 149)) out.put(old.get(i))
         writeJson("history.json", out)
+        historyCache = out
     }
 }

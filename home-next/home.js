@@ -308,6 +308,15 @@ window.HOME_READY.then(function () {
       for (var c = r.painted; c < upto; c++) if (r.items[c].bg) r.cards[c].style.backgroundImage = "url(" + art(r.items[c].bg, 480) + ")";
       r.painted = Math.max(r.painted, upto);
     }
+    unpaintFar(ri, 2);
+  }
+  // Rows more than `keep` away from row ri drop their decoded pictures (about half a MB each card).
+  function unpaintFar(ri, keep) {
+    rows.forEach(function (r, i) {
+      if (Math.abs(i - ri) <= keep || !r.painted) return;
+      for (var c = 0; c < r.painted; c++) r.cards[c].style.backgroundImage = "";
+      r.painted = 0;
+    });
   }
 
   // ---------------------------------------------------------------- focus model
@@ -409,7 +418,10 @@ window.HOME_READY.then(function () {
     clearInterval(aerial.frostTimer);
     var v = aerial.vids[aerial.cur];
     if (!active) { if (aerial.clip) v.pause(); return; }
-    if (!aerial.clip) playAerial(pickAerial()); else v.play().catch(function () {});
+    if (!aerial.clip) playAerial(pickAerial());
+    else if (aerial.at != null) {   // its decoder was given back while hidden: pick up where it was
+      v.src = aerial.clip.url; v.currentTime = aerial.at; aerial.at = null; v.play().catch(function () {});
+    } else v.play().catch(function () {});
     // The glass follows the video: a tiny frame every 8 s, crossfaded (each grab reads the video back on the main thread).
     aerial.frostTimer = setInterval(function () {
       var cv = aerial.vids[aerial.cur];
@@ -695,25 +707,32 @@ window.HOME_READY.then(function () {
       st.zone = "dock"; st.dock = 0; render();
     },
     // Android says memory is low: forget remembered pictures; what is on screen stays.
-    lowMemory: function () { cache = {}; cacheOrder = []; },
+    lowMemory: function () { cache = {}; cacheOrder = []; unpaintFar(st.zone === "rows" ? st.row : 0, 0); },
     resume: function () {
       if (Date.now() - loadedAt > 3 * 3600e3) { location.reload(); return; }   // fresh shows a few times a day
+      paintNear(st.zone === "rows" ? st.row : 0);   // the pictures let go while away
       followFocus();
       refreshContinue();
       refreshWeather();
     }
   };
   // The fresh data after a start from the kept copy: swap it in, keeping the row in focus.
-  window.HOME_FRESH = function (d) {
+  window.HOME_FRESH = function (d, aerials) {
     DATA.sport = d.sport; DATA.tvnow = d.tvnow; DATA.address = d.address; DATA.port = d.port; DATA.version = d.version;
+    if (aerials && aerials.length && !window.AERIAL_CACHE) AERIALS = aerials;   // the clips on the TV now
     if (JSON.stringify(DATA.rows) === JSON.stringify(d.rows)) return;
     DATA.rows = d.rows;
     var keep = st.zone === "rows" && rows[st.row] ? rows[st.row].id : null;
     buildRows();
-    if (keep && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) st.row = i; }
-    if (st.zone === "rows" && !rows.length) st.zone = "dock";
+    keepRow(keep);
     render();
   };
+  // After the rows change: stay on the same row if it is still there, never past the last one.
+  function keepRow(id) {
+    if (id && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === id) st.row = i; }
+    if (st.row >= rows.length) st.row = Math.max(0, rows.length - 1);
+    if (st.zone === "rows" && !rows.length) st.zone = "dock";
+  }
 
   // Back from an app: what it says you are in the middle of has probably changed.
   function refreshContinue() {
@@ -727,14 +746,21 @@ window.HOME_READY.then(function () {
       DATA.rows = fresh.concat(DATA.rows.filter(function (r) { return !isOurs(r); }));
       var keep = st.zone === "rows" && rows[st.row] ? rows[st.row].id : null;
       buildRows();
-      if (keep && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) st.row = i; }
-      if (st.zone === "rows" && !rows.length) st.zone = "dock";
+      keepRow(keep);
       render();
     }, function () {});
   }
 
   // Behind another app: stop the slider and forget the decoded pictures (megabytes each on this 2 GB TV).
-  addEventListener("visibilitychange", function () { if (document.hidden) { clearInterval(rotateTimer); aerialActive(false); cache = {}; cacheOrder = []; } });
+  addEventListener("visibilitychange", function () {
+    if (!document.hidden) return;
+    clearInterval(rotateTimer); aerialActive(false); cache = {}; cacheOrder = [];
+    // Give the aerial's hardware video decoder back: Netflix may need it, and it holds tens of MB.
+    var v = aerial.vids[aerial.cur];
+    if (aerial.clip && v.getAttribute("src")) { aerial.at = v.currentTime; v.removeAttribute("src"); v.load(); }
+    // And the card pictures far from where you are; they come back as you move there.
+    unpaintFar(rows.length ? (st.zone === "rows" ? st.row : 0) : -1, 0);
+  });
 
   $("#top-gear").insertAdjacentHTML("beforeend", GEAR.replace('stroke="#f6f3ee"', 'stroke="currentColor"'));
   $("#top-gear").addEventListener("click", function () { st.zone = "top"; render(); activate(); });
@@ -744,4 +770,6 @@ window.HOME_READY.then(function () {
   refreshWeather();
   document.body.classList.toggle("aerial", aerial.on);
   render();
+  // Fresh data that arrived before this page was ready.
+  if (window.HOME_PENDING) { window.HOME_FRESH.apply(null, window.HOME_PENDING); window.HOME_PENDING = null; }
 });

@@ -97,7 +97,11 @@ object AppRows {
         val order = rows.map { "app:" + it.key }
         val sorted = (0 until out.length()).map { out.getJSONObject(it) }.sortedBy { order.indexOf(it.optString("id")) }
         links = newLinks
-        dir.listFiles()?.forEach { if (it.name !in keep && !it.name.endsWith(".part") && System.currentTimeMillis() - it.lastModified() > 120_000) it.delete() }   // not art that just landed
+        // Not art that just landed; a .part an hour old is a dead fetch.
+        dir.listFiles()?.forEach {
+            val age = System.currentTimeMillis() - it.lastModified()
+            if (if (it.name.endsWith(".part")) age > 3_600_000 else it.name !in keep && age > 120_000) it.delete()
+        }
         cached = JSONArray(sorted); resume = res; at = System.currentTimeMillis()
         return cached to resume
     }

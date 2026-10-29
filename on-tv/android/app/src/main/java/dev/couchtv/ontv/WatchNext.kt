@@ -79,7 +79,7 @@ object WatchNext {
                     val pos = if (c.isNull(7)) 0L else c.getLong(7)
                     val dur = if (c.isNull(12)) 0L else c.getLong(12)
                     val artUri = str(c, 8).ifEmpty { str(c, 9) }
-                    val art = if (artUri.isEmpty()) null else cachedArt(dir, artUri, 960)
+                    val art = if (artUri.isEmpty()) null else cachedOnly(dir, artUri, 960) ?: run { artLater(artUri); null }
                     art?.let { keep.add(it) }
                     val app = Apps.BY_PACKAGE[pkg]?.name ?: label(pkg)
                     newLinks[id] = pkg to str(c, 10).ifEmpty { null }
@@ -99,8 +99,21 @@ object WatchNext {
             Log.w(TAG, "watch next: ${e.message}"); return emptyList()
         }
         links = newLinks
-        dir.listFiles()?.forEach { if (it.name !in keep && !it.name.endsWith(".part")) it.delete() }
+        // Old pictures go; ones that just landed, and fetches still running, stay. A .part an hour old is a dead fetch.
+        dir.listFiles()?.forEach {
+            val age = System.currentTimeMillis() - it.lastModified()
+            if (if (it.name.endsWith(".part")) age > 3_600_000 else it.name !in keep && age > 120_000) it.delete()
+        }
         return out
+    }
+
+    // New artwork is fetched here, one at a time, so coming back to the home screen never waits on it;
+    // when the last one lands, the next read picks them up.
+    private val artPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private fun artLater(uri: String) {
+        if (!pending.add(uri)) return
+        artPool.execute { try { cachedArt(dir, uri, 960) } finally { pending.remove(uri); if (pending.isEmpty()) at = 0 } }
     }
 
     /** Opens the title in its app, at the episode the app named; the app itself when it gave no link. */
@@ -137,13 +150,18 @@ object WatchNext {
         val f = File(dir, name)
         if (f.isFile) return name
         return try {
-            stream(uri)?.use { input ->
-                val b = BitmapFactory.decodeStream(input) ?: return null
-                val s = if (b.width > width) Bitmap.createScaledBitmap(b, width, maxOf(1, b.height * width / b.width), true) else b
-                val tmp = File(dir, "$name.part")
-                tmp.outputStream().use { s.compress(Bitmap.CompressFormat.JPEG, 84, it) }
-                if (tmp.renameTo(f)) name else null
-            }
+            // Read once, measure, then decode at a fraction of the size: a 4K poster decoded whole is 33 MB.
+            val raw = stream(uri)?.use { it.readBytes() } ?: return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= width) sample *= 2
+            val b = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val s = if (b.width > width) Bitmap.createScaledBitmap(b, width, maxOf(1, b.height * width / b.width), true).also { b.recycle() } else b
+            val tmp = File(dir, "$name.part")
+            tmp.outputStream().use { s.compress(Bitmap.CompressFormat.JPEG, 84, it) }
+            s.recycle()
+            if (tmp.renameTo(f)) name else null
         } catch (e: Exception) { Log.w(TAG, "watch next art: ${e.javaClass.simpleName}"); null }
     }
 
@@ -151,7 +169,8 @@ object WatchNext {
         if (uri.startsWith("http://") || uri.startsWith("https://")) {
             val h = URL(uri).openConnection() as HttpURLConnection
             h.connectTimeout = 10_000; h.readTimeout = 15_000
-            return h.inputStream
+            // Closing the stream lets the connection go too.
+            return object : java.io.FilterInputStream(h.inputStream) { override fun close() { try { super.close() } finally { h.disconnect() } } }
         }
         return ctx.contentResolver.openInputStream(Uri.parse(uri))
     }

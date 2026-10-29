@@ -65,7 +65,8 @@ object Media {
         // Netflix plays with no metadata at all: then what it last put in Watch Next (what you are watching),
         // else the app's own name, so the phone still gets the card and its controls.
         val wn = if (md?.getString(MediaMetadata.METADATA_KEY_TITLE).isNullOrBlank() && md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).isNullOrBlank())
-            runCatching { WatchNext.items().filter { it.optString("package") == c.packageName }.maxByOrNull { it.optLong("at") } }.getOrNull() else null
+            runCatching { WatchNext.items().filter { it.optString("package") == c.packageName }.maxByOrNull { it.optLong("at") } }.getOrNull()
+                ?.takeIf { System.currentTimeMillis() - it.optLong("at") < 6 * 3600_000L } else null   // only a recent one is likely what plays
         val title = md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() }
             ?: wn?.optString("title")?.takeIf { it.isNotBlank() }

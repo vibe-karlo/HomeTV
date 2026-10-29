@@ -129,6 +129,7 @@
     s.onmessage = function (e) {
       heard = Date.now();
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.event === "alive") return;   // every 3 s from the TV: the line works
       if (m.event === "now") { onNow(m); return; }
       inFlight = Math.max(0, inFlight - 1);
       if (m.ok === false && m.error) toast(m.error);
@@ -140,12 +141,13 @@
     };
   }
   function reconnect() { if (ws) { var old = ws; ws = null; wsOpen = false; try { old.close(); } catch (e) {} } listen(); }
-  // A press the TV has not answered in 1.5 s means the connection died quietly (the phone's Wi-Fi
-  // slept, the TV restarted): start a new one instead of waiting for the browser to notice.
-  setInterval(function () { if (wsOpen && inFlight > 0 && Date.now() - inFlightAt > 1500 && Date.now() - heard > 1500) reconnect(); }, 500);
+  // The TV says "alive" every 3 s. Nothing at all for 4.5 s means the connection died quietly (the
+  // phone's Wi-Fi slept, the TV restarted): start a new one instead of waiting for the browser to notice.
+  // A slow command (typing) does not count: the TV keeps saying alive while it works.
+  setInterval(function () { if (wsOpen && Date.now() - heard > 4500) reconnect(); }, 1000);
   // Back from the background (phone locked, app switched) or back on the network: reconnect at once.
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && !MOCK && token) { if (!ws || ws.readyState > 1) listen(); else if (Date.now() - heard > 8000) reconnect(); }
+    if (!document.hidden && !MOCK && token) { if (!ws || ws.readyState > 1) listen(); else if (Date.now() - heard > 4500) reconnect(); }
   });
   addEventListener("online", function () { if (!MOCK && token) reconnect(); });
 

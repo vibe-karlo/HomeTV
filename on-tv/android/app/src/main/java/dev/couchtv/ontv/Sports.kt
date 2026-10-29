@@ -135,7 +135,12 @@ object Sports {
         val hit = known.optJSONObject(title)
         if (hit != null && System.currentTimeMillis() - hit.optLong("at") < 7 * 86_400_000L) return hit.optString("url").ifEmpty { null }
         val url = channelArt(channel, title) ?: tmdbArt(title)
-        if (url != null || hit == null) Store.writeJson("tvart.json", known.put(title, JSONObject().put("url", url ?: "").put("at", System.currentTimeMillis())))
+        if (url != null || hit == null) {
+            // Shows not looked up for two weeks leave the file, so it stays small.
+            val old = System.currentTimeMillis() - 14 * 86_400_000L
+            known.keys().asSequence().toList().forEach { if ((known.optJSONObject(it)?.optLong("at") ?: 0L) < old) known.remove(it) }
+            Store.writeJson("tvart.json", known.put(title, JSONObject().put("url", url ?: "").put("at", System.currentTimeMillis())))
+        }
         return url
     }
 
@@ -236,9 +241,11 @@ object Sports {
                     }
                     "title", "desc", "category" -> field = p.name
                 }
-                XmlPullParser.TEXT -> if (cur != null && field != null && !cur.has(field)) cur.put(field, p.text.trim().removeSuffix("\u00AE").trim())   // RTL marks titles with ®
+                XmlPullParser.TEXT -> if (cur != null && field != null && !cur.has(field))
+                    cur.put(field, p.text.trim().removeSuffix("\u00AE").trim().let { if (field == "desc") it.take(300) else it })   // RTL marks titles with ®
                 XmlPullParser.END_TAG -> when (p.name) {
-                    "programme" -> { cur?.let { out.put(it) }; cur = null }
+                    // Only what has not ended yet is kept: the guides are held in memory between reads.
+                    "programme" -> { cur?.takeIf { it.optLong("stop") > System.currentTimeMillis() }?.let { out.put(it) }; cur = null }
                     "title", "desc", "category" -> field = null
                 }
             }

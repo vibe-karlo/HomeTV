@@ -24,10 +24,10 @@ object Now {
 
     private val listeners = CopyOnWriteArraySet<(String) -> Unit>()
     private val loop = Executors.newSingleThreadScheduledExecutor()
-    private var started = false
+    @Volatile private var started = false
 
-    /** A phone joined: read the TV at once, so it does not wait up to 4 s for the first real state. */
-    fun listen(fn: (String) -> Unit): Boolean { val added = listeners.add(fn); if (added && started) loop.execute { tick() }; return added }
+    /** A phone joined: read the TV at once and send it what is on, even if nothing changed since the last phone left. */
+    fun listen(fn: (String) -> Unit): Boolean { val added = listeners.add(fn); used(); if (added && started) loop.execute { lastSig = ""; tick() }; return added }
     fun unlisten(fn: (String) -> Unit) = listeners.remove(fn)
 
     fun iso(t: Long = System.currentTimeMillis()): String =
@@ -51,6 +51,10 @@ object Now {
             .put("keyboard", keyboard)
     }
 
+    @Volatile private var usedAt = 0L
+    /** A phone pressed something or just joined: watch for text fields for the next minute. */
+    fun used() { usedAt = System.currentTimeMillis() }
+
     /** True while the TV shows its on-screen keyboard: a text field wants typing, so phones open theirs. */
     @Volatile var keyboard = false
         private set
@@ -71,7 +75,8 @@ object Now {
         kbdLoop.scheduleWithFixedDelay({
             try {
                 // No text fields on our own home screen, and each read costs this small TV a little.
-                if (listeners.isEmpty() || !Adb.connected || front == null || front in Apps.HOME_PACKAGES || front == BuildConfig.APPLICATION_ID) {
+                // Only for a minute after the phone was used: a remote left open through a film asks nothing.
+                if (listeners.isEmpty() || System.currentTimeMillis() - usedAt > 60_000 || !Adb.connected || front == null || front in Apps.HOME_PACKAGES || front == BuildConfig.APPLICATION_ID) {
                     if (keyboard) { keyboard = false; push() }
                     return@scheduleWithFixedDelay
                 }
@@ -86,11 +91,13 @@ object Now {
      * Front app, power, volume and what is playing. With no phone listening there is nothing to show
      * them to, so only the ADB connection is looked after (no process reads every 4 s while you watch).
      */
-    @Synchronized private fun tick() {
+    private val tickLock = Any()
+    // Its own lock, not Now's: start() runs on the main thread and must never wait behind an ADB reconnect.
+    private fun tick(): Unit = synchronized(tickLock) {
         try {
             ticks++
             if (!Adb.connected && (Adb.everAllowed || Adb.paired) && ticks % 15 == 1) runCatching { Adb.ensure() }
-            if (listeners.isEmpty()) { media = null; return }
+            if (listeners.isEmpty()) { media = null; lastSig = ""; return }
             front = Tv.frontPackage()
             // The media session is a cheap call and is read every time; without notification access
             // it is a heavy dumpsys, so only every other time and only while a phone is there to show it.
