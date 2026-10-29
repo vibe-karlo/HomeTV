@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- HomeTV's floor, lit a little from above -->
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#24211d"/>
+      <stop offset="0.55" stop-color="#151311"/>
+      <stop offset="1" stop-color="#0d0c0b"/>
+    </linearGradient>
+    <!-- The remote: warm off-white, a soft sheen down its face -->
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#faf7f2"/>
+      <stop offset="1" stop-color="#d8d2c7"/>
+    </linearGradient>
+    <linearGradient id="key" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22201c"/>
+      <stop offset="1" stop-color="#121110"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#floor)"/>
+  <!-- the remote rises from the bottom edge -->
+  <rect x="292" y="196" width="440" height="980" rx="150" fill="url(#body)"/>
+  <!-- clickpad: a dark ring, four direction dots, a light centre -->
+  <circle cx="512" cy="430" r="158" fill="url(#key)"/>
+  <circle cx="512" cy="430" r="74" fill="url(#body)"/>
+  <g fill="#cfc8bc">
+    <circle cx="512" cy="312" r="10"/><circle cx="512" cy="548" r="10"/>
+    <circle cx="394" cy="430" r="10"/><circle cx="630" cy="430" r="10"/>
+  </g>
+  <!-- back and play-pause on the left, the volume rocker on the right -->
+  <circle cx="420" cy="704" r="56" fill="url(#key)"/>
+  <circle cx="420" cy="846" r="56" fill="url(#key)"/>
+  <rect x="548" y="648" width="112" height="254" rx="56" fill="url(#key)"/>
+  <g fill="none" stroke="#f1ede6" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M432 680 l-24 24 l24 24"/>
+    <path d="M604 717 v-36 M586 699 h36"/>
+    <path d="M586 852 h36"/>
+    <path d="M432 830 v32 M446 830 v32"/>
+  </g>
+  <path d="M392 828 v36 l26 -18 z" fill="#f1ede6" stroke="#f1ede6" stroke-width="6" stroke-linejoin="round"/>
+</svg>
