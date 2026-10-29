@@ -30,8 +30,15 @@
 
     <div id="top">
       <div id="top-gear" class="frost-host focusable" role="button" aria-label="Settings"></div>
-      <div id="clock" class="frost-host"><span id="clock-time"></span></div>
+      <div id="clock" class="frost-host" role="button" aria-label="Weather and time">
+        <span id="wx" hidden><span id="wx-glyph"></span><span id="wx-temp"></span></span><span id="clock-time"></span>
+      </div>
     </div>
+    <!-- The next hours, opened by moving onto the weather beside the clock. -->
+    <section id="forecast" class="frost-host" aria-label="Forecast">
+      <div id="fc-head"><b id="fc-place"></b><span id="fc-now"></span></div>
+      <div id="fc-hours"></div>
+    </section>
 
     <div id="scroller">
       <nav id="dock" class="frost-host" aria-label="Apps">

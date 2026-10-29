@@ -2,8 +2,25 @@ window.HOME_READY.then(function () {
   "use strict";
   var H = window.Home, P = H.prefs, D = window.HOME_DATA, TV = window.TVOS;
   var address = (D.address || location.hostname) + ":" + (D.port || 5400);
-  function post(path) {
-    return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then(function (r) { return r.json(); });
+  function post(path, body) {
+    return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+  }
+
+  // The TV's sources, asked for each time the page opens (a console can be switched on in between).
+  var inputs = null;
+  var SAMPLE_INPUTS = [
+    { id: "h1", name: "HDMI 1", kind: "hdmi", state: "on", connected: true, device: "PlayStation 5", colour: "#0070d1" },
+    { id: "h2", name: "HDMI 2", kind: "hdmi", state: "standby", connected: true, device: "Apple TV", colour: "#aeaeb2" },
+    { id: "h3", name: "HDMI 3", kind: "hdmi", state: "empty", connected: false },
+    { id: "h4", name: "HDMI 4", kind: "hdmi", state: "empty", connected: false },
+    { id: "live", name: "Live TV", kind: "tuner", state: "on", connected: true }];
+  function loadInputs() {
+    var got = TV ? fetch("/api/inputs").then(function (r) { return r.json(); }) : Promise.resolve({ ok: true, inputs: SAMPLE_INPUTS });
+    got.then(function (d) { inputs = d.inputs || []; if (openFlag) draw(); }, function () { inputs = []; if (openFlag) draw(); });
+  }
+  function connectedCount() {
+    var n = inputs.filter(function (i) { return i.connected && i.kind !== "tuner"; }).length;
+    return n ? n + " connected" : "";
   }
   var el = document.getElementById("settings"), list = document.getElementById("set-list");
   var $ = function (id) { return document.getElementById(id); };
@@ -23,7 +40,10 @@ window.HOME_READY.then(function () {
 
   var PAGES = {
     root: { title: "Settings", rows: function () {
+      var wx = H.weather();
       return [
+        { label: "Inputs", menu: "inputs", value: inputs ? connectedCount() : "",
+          help: "Switch to HDMI or Live TV. Consoles and players show by the name they give themselves." },
         { label: "Background", value: P.background === "aerial" ? "Aerials" : "Shows",
           help: "What plays behind the home screen: artwork from popular shows, or Apple’s aerial films.",
           act: function () { H.setBackground(P.background === "aerial" ? "shows" : "aerial"); } },
@@ -39,6 +59,10 @@ window.HOME_READY.then(function () {
         { label: "Clock", value: P.clock === "12h" ? "12-hour" : "24-hour",
           help: "How the time reads in the corner of the home screen.",
           act: function () { P.clock = P.clock === "12h" ? "24h" : "12h"; H.save(); } },
+        { label: "Weather", value: !P.weather ? "Off" : wx ? wx.place : TV ? "No place set" : "On",
+          help: P.weather && TV && !wx ? "Choose your town on the setup page, " + address + "/setup, and the weather shows beside the clock."
+            : "The temperature beside the clock. Move onto it for the next hours. The place is set on " + address + "/setup.",
+          act: function () { P.weather = !P.weather; H.save(); } },
         { label: "Live Sport", value: P.sport ? "On" : "Off",
           help: "F1 and NK Osijek broadcasts at the top of the home screen. MAXSport and Arena Sport open MAXtv, other channels open EON.",
           act: function () { P.sport = !P.sport; H.save(); H.rebuildRows(); } },
@@ -57,6 +81,22 @@ window.HOME_READY.then(function () {
           act: function () { if (TV) TV.openSettings(); else H.toast("Opens the TV’s settings"); } },
         { label: "About", menu: "about", help: "This TV and where the home screen gets its shows." }
       ];
+    } },
+
+    inputs: { title: "Inputs", enter: loadInputs, rows: function () {
+      if (!inputs) return [{ label: "Looking for sources", help: "Asking the TV what is plugged in." }];
+      return inputs.map(function (i) {
+        var state = i.kind === "tuner" ? "" : i.state === "on" ? "On" : i.state === "standby" ? "Standby" : "Nothing plugged in";
+        return { label: i.device || i.name, value: i.device ? i.name + " · " + state : state, off: !i.connected, dot: i.connected && i.kind !== "tuner" ? i.colour || "#30d158" : "transparent",   // every row keeps the slot, so names line up
+          help: i.kind === "tuner" ? "The TV’s own channels." : i.device ? i.device + " on " + i.name + ". Select to switch to it."
+            : i.connected ? "Select to switch to " + i.name + "." : "Nothing is plugged into " + i.name + ", or it is switched off at the wall.",
+          act: function () {
+            H.toast("Switching to " + (i.device || i.name));
+            if (!TV) return;
+            post("/api/inputs/open", { id: i.id }).then(function (d) { if (!d.ok) H.toast(d.error || "The TV would not switch"); },
+              function () { H.toast("Could not reach the TV app"); });
+          } };
+      });
     } },
 
     places: { title: "Aerial Places", rows: function () {
@@ -165,9 +205,10 @@ window.HOME_READY.then(function () {
     rows.forEach(function (r, i) {
       var li = document.createElement("li");
       li.className = "set-row" + (r.off ? " off" : "") + (i === pg.focus ? " focus" : "");
-      li.innerHTML = '<span class="label"></span>' + (r.value ? '<span class="value"></span>' : "") +
+      li.innerHTML = (r.dot ? '<span class="dot"></span>' : "") + '<span class="label"></span>' + (r.value ? '<span class="value"></span>' : "") +
         (r.tick ? TICK : "") + (r.menu ? CHEV : "") + (r.ext ? EXT : "");
       li.querySelector(".label").textContent = r.label;
+      if (r.dot) li.querySelector(".dot").style.background = r.dot;
       if (r.value) li.querySelector(".value").textContent = r.value;
       li.addEventListener("click", function () { if (pg.focus === i) select(); else { pg.focus = i; side = null; draw(); } });
       list.appendChild(li);
@@ -184,7 +225,7 @@ window.HOME_READY.then(function () {
 
   function select() {
     var r = rows[page().focus];
-    if (r.menu) { stack.push({ id: r.menu, focus: 0 }); side = null; draw(true); return; }
+    if (r.menu) { stack.push({ id: r.menu, focus: 0 }); side = null; if (PAGES[r.menu].enter) PAGES[r.menu].enter(); draw(true); return; }
     if (r.act) { r.act(); draw(); }
   }
 
@@ -196,6 +237,7 @@ window.HOME_READY.then(function () {
   var openFlag = false;
   function open() {
     stack = [{ id: "root", focus: 0 }]; side = null;
+    loadInputs();
     el.hidden = false; void el.offsetWidth; el.classList.add("open"); openFlag = true;
     draw();
   }

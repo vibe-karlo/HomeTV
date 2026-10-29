@@ -239,6 +239,10 @@ object Adb {
             // usage access: lets the app see which app is in front from Android's own records, instead of a heavy dumpsys
             runCatching { shell("appops set ${BuildConfig.APPLICATION_ID} GET_USAGE_STATS allow", 8000) }
             if (Build.VERSION.SDK_INT >= 30) runCatching { shell("pm grant ${BuildConfig.APPLICATION_ID} android.permission.WRITE_SECURE_SETTINGS", 8000) }
+            // TV listings: Android's Watch Next list (what the apps say you are in the middle of)
+            runCatching { shell("pm grant ${BuildConfig.APPLICATION_ID} ${WatchNext.PERMISSION}", 8000) }
+            // notification access, used only to read media sessions: what is playing, and play, pause and skip from the phone
+            runCatching { shell("cmd notification allow_listener ${BuildConfig.APPLICATION_ID}/${MediaListener::class.java.name}", 8000) }
         }
         return true
     }

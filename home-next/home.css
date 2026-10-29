@@ -150,9 +150,35 @@ body.aerial:not(.browse) .hero-shade { opacity: 0; }
 #top-gear.focus::before { background-color: #f2efea; box-shadow: none; }
 #clock {
   height: 64px; padding: 0 28px; border-radius: 32px;
-  display: flex; align-items: center;
+  display: flex; align-items: center; gap: 22px;
   font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+  transition: transform 220ms var(--ease), color 200ms var(--ease);
 }
+#clock.focus { transform: scale(1.06); color: #15130f; }
+#clock.focus::before { background-color: #f2efea; box-shadow: none; }
+#wx { display: flex; align-items: center; gap: 10px; }
+#wx[hidden] { display: none; }
+#wx-glyph svg { width: 34px; height: 34px; }
+#clock.focusable { padding-left: 22px; }   /* with the weather in it */
+
+/* The next hours, under the clock, while the weather is focused. */
+#forecast {
+  right: var(--gutter); top: 148px; z-index: 3; padding: 26px 34px 28px; border-radius: 30px;
+  opacity: 0; transform: translateY(-10px); pointer-events: none;
+  transition: opacity 260ms var(--ease), transform 300ms var(--ease);
+}
+body.forecast #forecast { opacity: 1; transform: none; }
+#forecast::before { background-color: rgba(20, 18, 16, 0.5); }
+#fc-head { display: flex; align-items: baseline; gap: 18px; white-space: nowrap; }
+#fc-place { font-size: 30px; font-weight: 600; }
+#fc-now { font-size: 24px; font-weight: 500; color: var(--ink-2); }
+#fc-hours { display: flex; gap: 14px; margin-top: 22px; }
+.fc-hour {
+  width: 96px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.fc-hour .t { color: var(--ink-3); font-size: 21px; }
+.fc-hour svg { width: 40px; height: 40px; }
 
 /* ---------------------------------------------------------------- dock + rows (scroll together) */
 
@@ -236,6 +262,8 @@ body.browse #dock { opacity: 0; }
 }
 .card .scrim { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%); }
 .card .fallback { position: absolute; left: 24px; bottom: 20px; right: 24px; font-size: 30px; font-weight: 700; line-height: 1.05; }
+.card.has-progress .fallback { bottom: 44px; }
+.card .fallback small { display: block; margin-bottom: 8px; font-size: 21px; font-weight: 600; color: var(--ink-3); }
 .card .caption {
   position: absolute; left: 0; top: calc(100% + 18px); width: 100%;
   font-size: 23px; font-weight: 500; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -285,6 +313,8 @@ body.browse #dock { opacity: 0; }
 .set-row .chev { width: 14px; height: 24px; flex: none; opacity: 0.6; }
 .set-row .chev.ext { width: 22px; height: 22px; }
 .set-row .tick { width: 28px; height: 28px; flex: none; }
+/* A source with something on it: the device's own colour. */
+.set-row .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; margin-right: -4px; }
 .set-row.off { color: var(--ink-3); }
 .set-row.head { height: 64px; font-size: 26px; color: var(--ink-3); cursor: default; }
 .set-row.focus { background: rgba(246, 243, 238, 0.94); color: #15130f; transform: scale(1.025); }

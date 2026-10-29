@@ -142,26 +142,48 @@ object Shows {
     /** Taken off Continue Watching by hand; it comes back when the show is opened again. */
     private fun removed(): MutableSet<String> = Store.str("cw_removed")?.split(',')?.filter { it.isNotEmpty() }?.toMutableSet() ?: mutableSetOf()
 
-    fun forget(id: String) {
+    /**
+     * Taken off Continue Watching by hand. A Watch Next card remembers when it was last watched, so it
+     * comes back once its app says you watched it again; a show opened from here comes back when opened again.
+     */
+    fun forget(id: String, at: Long = 0) {
         if (id.isEmpty()) return
+        if (id.startsWith("wn:")) {
+            val m = wnRemoved().put(id, at)
+            Store.writeJson("wn-removed.json", m)
+            return
+        }
         Store.putStr("cw_removed", (removed() + id).joinToString(","))
     }
 
+    private fun wnRemoved(): JSONObject = (Store.readJson("wn-removed.json") as? JSONObject) ?: JSONObject()
+
+    /**
+     * What you are in the middle of: first what the TV's apps report (Android's Watch Next list, with
+     * progress and a link to the episode), then shows opened from this home screen that are not there yet.
+     */
     fun continueRow(): JSONObject {
+        val items = JSONArray()
+        val titles = HashSet<String>()
+        val gone = wnRemoved()
+        for (w in WatchNext.items()) {
+            if (gone.has(w.optString("id")) && w.optLong("at") <= gone.optLong(w.optString("id"))) continue
+            if (!titles.add(Finder.norm(w.optString("title")))) continue
+            items.put(w)
+        }
         val h = Store.history()
         val seen = HashSet<String>(removed())
-        val items = JSONArray()
         for (i in 0 until h.length()) {
             val it = h.getJSONObject(i)
             if (!it.optBoolean("home")) continue
             val id = it.optString("imdb")
-            if (id.isEmpty() || !seen.add(id)) continue
+            if (id.isEmpty() || !seen.add(id) || !titles.add(Finder.norm(it.optString("title")))) continue
             items.put(JSONObject().put("id", id).put("type", it.optString("type")).put("title", it.optString("title"))
                 .put("year", it.optString("year")).put("genres", it.optJSONArray("genres") ?: JSONArray())
                 .put("description", it.optString("description")).put("bg", it.optString("bg")).put("logo", it.optString("logo"))
                 .put("rating", it.optString("rating"))
                 .put("source", it.optString("opens")).put("opens", it.optString("opens")))
-            if (items.length() >= 12) break
+            if (items.length() >= 16) break
         }
         return JSONObject().put("id", "continue").put("title", "Continue Watching").put("items", items)
     }

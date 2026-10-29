@@ -14,8 +14,9 @@ Apple's aerial films, with the place named in the corner. The same films play as
 ![HomeTV home screen over an aerial film of desert dunes](docs/screens/hometv-aerial.jpg)
 
 **Shows to pick up.** Move down from the apps to browse Continue Watching, Popular on Netflix and
-trending series and films. The artwork behind follows what is focused, and Select opens it in the
-app it streams on.
+trending series and films. Continue Watching includes what Netflix, YouTube and other apps say
+you are in the middle of, with how far you got, and opens straight at that episode. The artwork
+behind follows what is focused, and Select opens it in the app it streams on.
 
 ![Browsing the Continue Watching row](docs/screens/hometv-browse.jpg)
 
@@ -33,6 +34,12 @@ playing, and the buttons there open apps, type into the TV and switch it off.
 ## Features
 
 - **Home row of apps** with real app banners. Hide the ones you never open in Settings.
+- **Continue Watching** from Android TV's Watch Next list (what your apps report, with progress)
+  plus the shows you opened from the home screen. Hold OK on a card to remove it.
+- **Weather** beside the clock. Move onto it for the next six hours. The place is set on the
+  setup page (`http://<tv-ip>:5400/setup`).
+- **Inputs** in Settings and on the phone remote: HDMI ports by the name the device gives itself
+  ("PlayStation 5", "Apple TV"), whether it is on, and Live TV.
 - **Backgrounds:** artwork from popular shows, or Apple's aerial films (Landscapes, Cities, Space,
   Underwater).
 - **Screensaver** with the aerials, after 5 to 30 minutes.
@@ -41,7 +48,8 @@ playing, and the buttons there open apps, type into the TV and switch it off.
   NK Osijek).
 - **Remote buttons:** the Philips and Rakuten TV keys on the TV's own remote open any app you
   pick.
-- **Phone remote** paired with a 6 digit code shown on the TV.
+- **Phone remote** paired with a 6 digit code shown on the TV. While something plays it shows the
+  title, how far in you are, and play, pause, 10 seconds back and on, and next when the app offers it.
 
 ## Build
 
@@ -65,6 +73,11 @@ for the original build notes), plus a free [TMDB](https://www.themoviedb.org/set
    ```
 4. To use it as the home screen, follow
    [Use it as the home screen](on-tv/README.md#use-it-as-the-home-screen-optional).
+
+Once HomeTV is connected to the TV's debugging, it grants itself two more things it needs:
+the TV listings permission (for Continue Watching from your apps) and notification access, which
+it uses only to see what is playing. Without debugging, the TV asks for the first one once, and
+the second can be switched on under Settings, Apps, Special app access, Notification access.
 
 **Sport photos (optional).** Put `f1.jpg` and `osijek.jpg` in `home-next/sport/` to show a photo
 behind those events. Without them the event shows on a plain dark card.
@@ -97,6 +110,11 @@ sh scripts/privacy-scan.sh <your-denylist-file>
 
 - [couch-tv](https://github.com/Seagey/couch-tv) by Seagey, MIT licence. The original README is in
   [docs/couch-tv-README.md](docs/couch-tv-README.md).
+- Continue Watching from Watch Next, now playing, and the HDMI device names were adapted from
+  [Talkies](https://github.com/rajupp/talkies) by TechPP (MIT), which credits
+  [Luma](https://github.com/0xProbabillity/luma-tv) and [Matinee](https://github.com/Jarvis322/matinee)
+  (both MIT) for the device names and now playing ideas.
+- Weather from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
 - Aerial films by Apple, streamed from Apple's servers and not included here.
 - Show data from Stremio Cinemeta and JustWatch, artwork from TMDB. This product uses the TMDB API
   but is not endorsed or certified by TMDB.

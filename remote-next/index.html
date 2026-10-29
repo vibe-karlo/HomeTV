@@ -22,6 +22,25 @@
       <button id="power" class="round" aria-label="Turn the TV off"></button>
     </header>
 
+    <!-- What is playing, from the app's media session, with the controls the app offers. -->
+    <section id="playing" aria-label="Now playing" hidden>
+      <div id="pl-top">
+        <i id="pl-art"></i>
+        <div id="pl-text"><b id="pl-title"></b><span id="pl-sub"></span></div>
+      </div>
+      <div id="pl-bar">
+        <span id="pl-track"><i id="pl-fill"></i></span>
+        <span id="pl-times"><span id="pl-at"></span><span id="pl-left"></span></span>
+      </div>
+      <div id="pl-ctl">
+        <button data-media="previous" aria-label="Previous"></button>
+        <button data-media="back" aria-label="Back 10 seconds"></button>
+        <button data-media="toggle" id="pl-toggle" aria-label="Play or pause"></button>
+        <button data-media="forward" aria-label="Forward 10 seconds"></button>
+        <button data-media="next" aria-label="Next"></button>
+      </div>
+    </section>
+
     <section id="pad" aria-label="Touch pad: swipe to move, tap to select">
       <span id="pad-touch"></span>
       <span id="pad-hint">Swipe to move · Tap to select</span>
@@ -52,6 +71,8 @@
     <div id="apps-sheet">
       <div id="apps-top"><span>Apps</span><button id="apps-done">Done</button></div>
       <div id="apps-grid"></div>
+      <div id="inputs-top">Inputs</div>
+      <div id="inputs-list"></div>
     </div>
   </section>
 

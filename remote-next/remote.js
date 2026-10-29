@@ -17,6 +17,15 @@
     up: S('<path d="M8 14h12M14 8v12"/>'),
     power: S('<path d="M14 5v8"/><path d="M8.6 8.6a8 8 0 1 0 10.8 0"/>'),
     keyboard: S('<rect x="3.5" y="7.5" width="21" height="13" rx="3"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01M20 11.5h.01M9.5 16.5h9"/>'),
+    play: S('<path d="M9 6.8v14.4a.8.8 0 0 0 1.2.7l11.3-7.2a.8.8 0 0 0 0-1.4L10.2 6.1a.8.8 0 0 0-1.2.7z" fill="currentColor"/>'),
+    pause: S('<path d="M10 7v14M18 7v14" stroke-width="3.4"/>'),
+    next: S('<path d="M6.5 7.5v13a.6.6 0 0 0 .9.5l9.2-6.5a.6.6 0 0 0 0-1L7.4 7a.6.6 0 0 0-.9.5z" fill="currentColor" stroke-width="1.4"/><path d="M21.5 7.5v13"/>'),
+    previous: S('<path d="M21.5 7.5v13a.6.6 0 0 1-.9.5l-9.2-6.5a.6.6 0 0 1 0-1l9.2-6.5a.6.6 0 0 1 .9.5z" fill="currentColor" stroke-width="1.4"/><path d="M6.5 7.5v13"/>'),
+    // Ten seconds back or on: the arrow turns the way the time goes, the number sits in its middle.
+    rew: S('<path d="M7.6 8.6A9.5 9.5 0 1 1 4.6 15"/><path d="M7.9 3.9l-.3 4.7 4.6.4"/>' +
+      '<text x="14.4" y="15.4" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="600" fill="currentColor" stroke="none">10</text>'),
+    fwd: S('<path d="M20.4 8.6A9.5 9.5 0 1 0 23.4 15"/><path d="M20.1 3.9l.3 4.7-4.6.4"/>' +
+      '<text x="13.6" y="15.4" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="600" fill="currentColor" stroke="none">10</text>'),
     apps: S('<rect x="4.5" y="4.5" width="8" height="8" rx="2"/><rect x="15.5" y="4.5" width="8" height="8" rx="2"/><rect x="4.5" y="15.5" width="8" height="8" rx="2"/><rect x="15.5" y="15.5" width="8" height="8" rx="2"/>')
   };
   document.querySelectorAll("#keys button").forEach(function (b) { b.innerHTML = ICON[b.dataset.key || b.dataset.vol]; });
@@ -85,6 +94,7 @@
     if (!MOCK && wsSend(m)) return;
     send("POST", "/api/key", m);
   };
+  var media = function (a) { if (!MOCK && wsSend({ media: a })) return; send("POST", "/api/media", { action: a }); };
   var vol = function (a) { if (!MOCK && wsSend({ volume: a })) return; send("POST", "/api/volume", { action: a }); };
   var text = function (s) { if (!MOCK && wsSend({ text: s })) return; send("POST", "/api/text", { text: s }); };
 
@@ -94,9 +104,12 @@
   function onNow(n) {
     state.power = n.power;
     $("now-app").textContent = n.power === "off" ? "Philips TV" : (n.app && n.app.id !== "home" ? n.app.name : "Home");
-    var p = n.playing, what = n.power === "off" ? "Off" : p && p.title ? p.title + (p.state === "paused" ? " · Paused" : "") : "Philips TV";
+    // With the playing card showing, the bar only says whether it plays; the card has the title.
+    var p = n.playing, card = p && p.title && p.state !== "stopped" && n.power !== "off";
+    var what = n.power === "off" ? "Off" : card ? (p.state === "paused" ? "Paused" : p.state === "buffering" ? "Loading" : "Playing") : "Philips TV";
     $("now-what").textContent = what;
     $("power").classList.toggle("off", n.power === "off");
+    showPlaying(n.power === "off" ? null : p);
     if (n.keyboard && !state.keyboard) openKbd(true);
     if (!n.keyboard && state.keyboard && kbd.auto) closeKbd();
     state.keyboard = !!n.keyboard;
@@ -120,6 +133,65 @@
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && !MOCK && token && (!ws || ws.readyState > 1)) listen();
   });
+
+  // ---------------------------------------------------------------- now playing (the app's media session)
+
+  var pl = { item: null, pos: null, at: 0, timer: null };
+  document.querySelectorAll("#pl-ctl button").forEach(function (b) {
+    if (b.id !== "pl-toggle") b.innerHTML = ICON[{ back: "rew", forward: "fwd" }[b.dataset.media] || b.dataset.media];
+    b.addEventListener("click", function () {
+      tick();
+      var a = b.dataset.media;
+      media(a);
+      if (a === "toggle" && pl.item) {   // answer the press at once; the TV confirms a moment later
+        pl.pos = position(); pl.at = Date.now();
+        pl.item.state = pl.item.state === "playing" ? "paused" : "playing"; drawToggle();
+      }
+    });
+  });
+  function clock(ms) {
+    var s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function position() {
+    if (pl.pos == null) return null;
+    var p = pl.pos + (pl.item.state === "playing" ? Date.now() - pl.at : 0);
+    return pl.item.duration_ms ? Math.min(p, pl.item.duration_ms) : p;
+  }
+  function drawToggle() {
+    var playing = pl.item && pl.item.state !== "paused";
+    $("pl-toggle").innerHTML = playing ? ICON.pause : ICON.play;
+    $("pl-toggle").setAttribute("aria-label", playing ? "Pause" : "Play");
+  }
+  function drawTime() {
+    var p = position(), d = pl.item && pl.item.duration_ms;
+    $("pl-bar").hidden = !(p != null && d);
+    if (p == null || !d) return;
+    $("pl-fill").style.width = (100 * p / d).toFixed(2) + "%";
+    $("pl-at").textContent = clock(p);
+    $("pl-left").textContent = "−" + clock(d - p);
+  }
+  function showPlaying(p) {
+    var on = !!(p && p.title && p.state !== "stopped");
+    $("playing").hidden = !on;
+    clearInterval(pl.timer);
+    if (!on) { pl.item = null; return; }
+    var same = pl.item && pl.item.title === p.title;
+    pl.item = p; pl.pos = p.position_ms; pl.at = Date.now();
+    $("pl-title").textContent = p.title;
+    $("pl-sub").textContent = p.subtitle || p.episode_title || "";
+    var art = $("pl-art"), url = p.art ? p.art + (MOCK ? "" : "&token=" + encodeURIComponent(token || "")) : p.package && !MOCK ? "/art/banner/" + p.package : null;
+    art.hidden = !url;
+    if (url && !same) art.style.backgroundImage = "url(" + url + ")";
+    var can = p.can || { toggle: true, seek: false, next: false, previous: false };
+    document.querySelectorAll("#pl-ctl button").forEach(function (b) {
+      var a = b.dataset.media;
+      // Missing controls keep their place, so play and pause stays in the middle.
+      b.classList.toggle("gone", a === "toggle" ? false : a === "back" || a === "forward" ? !can.seek : !can[a]);
+    });
+    drawToggle(); drawTime();
+    pl.timer = setInterval(drawTime, 1000);
+  }
 
   // ---------------------------------------------------------------- touch pad
 
@@ -245,6 +317,27 @@
         grid.appendChild(b);
       });
     }, function () { toast("Could not load the apps"); });
+    // The TV's sources under the apps: devices by their own name, with a dot when something is on.
+    var gotIn = MOCK ? Promise.resolve({ inputs: [{ id: "h1", name: "HDMI 1", kind: "hdmi", state: "on", connected: true, device: "PlayStation 5", colour: "#0070d1" },
+      { id: "h2", name: "HDMI 2", kind: "hdmi", state: "empty", connected: false }, { id: "live", name: "Live TV", kind: "tuner", state: "on", connected: true }] })
+      : call("GET", "/api/inputs");
+    gotIn.then(function (d) {
+      var list = $("inputs-list"); list.innerHTML = "";
+      $("inputs-top").hidden = !d.inputs.length;
+      d.inputs.forEach(function (i) {
+        var b = document.createElement("button"); b.className = "input" + (i.connected ? "" : " off");
+        b.innerHTML = '<i class="dot"></i><b></b><span></span>';
+        b.querySelector(".dot").style.background = i.connected && i.kind !== "tuner" ? i.colour || "#30d158" : "transparent";
+        b.querySelector("b").textContent = i.device || i.name;
+        b.querySelector("span").textContent = i.kind === "tuner" ? "" : i.device ? i.name : i.connected ? (i.state === "standby" ? "Standby" : "On") : "Empty";
+        b.addEventListener("click", function () {
+          tick(); closeApps();
+          toast("Switching to " + (i.device || i.name));   // an error from the TV replaces this
+          send("POST", "/api/inputs/open", { id: i.id });
+        });
+        list.appendChild(b);
+      });
+    }, function () { $("inputs-top").hidden = true; });
   }
   function closeApps() { appsEl.classList.remove("open"); appsEl.setAttribute("aria-hidden", "true"); }
   $("apps-open").addEventListener("click", function () { tick(); openApps(); });
@@ -297,7 +390,9 @@
 
   // ---------------------------------------------------------------- preview stand-in for the TV
 
-  var mockNow = { power: "on", app: { id: "netflix", name: "Netflix" }, playing: { title: "The Gentlemen", state: "playing" }, keyboard: false };
+  var mockNow = { power: "on", app: { id: "netflix", name: "Netflix" }, keyboard: false,
+    playing: { title: "The Gentlemen", subtitle: "S2 E3 · Tiger, Tiger", state: "playing", position_ms: 1384000, duration_ms: 3340000,
+      can: { toggle: true, seek: true, next: true, previous: false } } };
   var mockLog = [];
   function mock(method, path, body) {
     mockLog.push(path + " " + JSON.stringify(body || {}));

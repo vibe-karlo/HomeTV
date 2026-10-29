@@ -78,6 +78,16 @@ class HomeActivity : Activity() {
         setContentView(w)
         hideBars()
         load()
+        // Continue Watching reads Android's Watch Next list. ADB grants this silently; without ADB, ask once.
+        if (!WatchNext.allowed() && !Store.bool("asked_tv_listings")) {
+            Store.putBool("asked_tv_listings", true)
+            runCatching { requestPermissions(arrayOf(WatchNext.PERMISSION), 7) }
+        }
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, perms, results)
+        if (code == 7) js("window.tv && tv.resume()")
     }
 
     private fun load() { web?.loadUrl("$base/tv/") }

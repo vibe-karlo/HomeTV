@@ -52,6 +52,11 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             uri.startsWith("/art/banner/") -> AppArt.banner(uri.removePrefix("/art/banner/"))
                 ?.let { newFixedLengthResponse(Response.Status.OK, "image/jpeg", java.io.ByteArrayInputStream(it), it.size.toLong()) }
                 ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+            // Artwork of what you watch: only for the home screen and paired phones.
+            uri.startsWith("/watchnext/art/") || uri == "/now/art" -> if (!authed(s)) json(401, err("pair this phone first")) else
+                (if (uri == "/now/art") Media.art() else WatchNext.art(uri.removePrefix("/watchnext/art/"))?.readBytes())
+                    ?.let { newFixedLengthResponse(Response.Status.OK, "image/jpeg", java.io.ByteArrayInputStream(it), it.size.toLong()).noStore() }
+                    ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             // The phone remote pairs by itself, so it gets no pairing shim.
             else -> staticOrIndex("www/remote", uri.removePrefix("/"), inject = false)
         }
@@ -138,7 +143,10 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "POST /api/open-show" -> json(200, Shows.open(body(s)))
             "GET /api/sport" -> json(200, ok().put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
                 .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Sports.NOW_CHANNELS) else JSONArray()))
-            "POST /api/continue/remove" -> { Shows.forget(body(s).optString("id")); json(200, ok()) }
+            "POST /api/continue/remove" -> { val b = body(s); Shows.forget(b.optString("id"), b.optLong("at")); json(200, ok()) }
+            // Continue Watching again, when the home screen comes back from an app.
+            "GET /api/continue-row" -> json(200, ok().put("row", Shows.continueRow()).put("watchNext", WatchNext.allowed()))
+            "POST /api/watchnext/open" -> json(200, WatchNext.open(body(s).optString("id")))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
             "GET /api/tv-apps" -> {
                 val p = Prefs.json()
@@ -213,6 +221,11 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "POST /api/screens/open" -> json(404, err("no screens in on-TV mode"))
             "POST /api/power" -> power(body(s).optString("state"))
             "POST /api/volume" -> volume(body(s))
+            // The TV's sources (HDMI by device name, AV, Live TV), and switching to one.
+            "GET /api/inputs" -> json(200, ok().put("inputs", Inputs.list()))
+            "POST /api/inputs/open" -> { Inputs.open(body(s).optString("id")); json(200, ok()) }
+            // Play, pause, skip and seek in the app that is playing.
+            "POST /api/media" -> { Media.control(body(s).optString("action"), Now.front); json(200, ok()) }
             "GET /api/screenshot" -> newFixedLengthResponse(Response.Status.OK, "image/png", Tv.screenshot().inputStream(), -1).noStore()
             "GET /api/weather" -> json(200, ok(Weather.get() ?: throw ApiError(503, "No weather right now.")))
             "POST /api/home-apps" -> {
@@ -402,7 +415,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
 
     /**
      * Low-latency channel. Sends {"event":"now", ...} on every change. Takes
-     * {"key":"up"}, {"key":"ok","hold":true}, {"volume":"up"} or {"text":"bluey"}; answers {"ok":true} or an error.
+     * {"key":"up"}, {"key":"ok","hold":true}, {"volume":"up"}, {"text":"bluey"} or {"media":"next"}; answers {"ok":true} or an error.
      */
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
         private val fn: (String) -> Unit = { runCatching { send(JSONObject(it).put("event", "now").toString()) } }
@@ -417,6 +430,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                     m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold")); JSONObject().put("ok", true).put("key", m.getString("key")) }
                     m.has("volume") -> { volume(JSONObject().put("action", m.getString("volume"))); JSONObject().put("ok", true) }
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
+                    m.has("media") -> { Media.control(m.getString("media"), Now.front); JSONObject().put("ok", true) }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")
                 }
             } catch (e: ApiError) { JSONObject().put("ok", false).put("error", e.message).put("status", e.status) }

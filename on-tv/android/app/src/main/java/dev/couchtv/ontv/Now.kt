@@ -17,7 +17,8 @@ object Now {
     @Volatile var who: String? = null
     @Volatile var playedItem: JSONObject? = null          // the last thing /api/play started
     @Volatile var sleepEnds: Long? = null
-    @Volatile private var front: String? = null
+    @Volatile var front: String? = null
+        private set
     @Volatile private var media: JSONObject? = null
     @Volatile private var lastSig = ""
 
@@ -70,10 +71,12 @@ object Now {
                 tick++
                 if (!Adb.connected && (Adb.everAllowed || Adb.paired) && tick % 15 == 1) runCatching { Adb.ensure() }
                 front = Tv.frontPackage()
-                // "What's playing" is a heavy dumpsys: only while a phone is there to show it.
-                if (tick % 2 == 0) media = if (listeners.isEmpty()) null else readMedia()
+                // The media session is a cheap call and is read every time; without notification access
+                // it is a heavy dumpsys, so only every other time and only while a phone is there to show it.
+                if (Media.allowed()) media = if (listeners.isEmpty()) null else runCatching { Media.playing(front) }.getOrNull()?.put("updated", iso())
+                else if (tick % 2 == 0) media = if (listeners.isEmpty()) null else readMedia()
                 val v = Tv.volume()
-                val sig = listOf(front, Tv.isOn, v["level"], v["muted"], media?.optString("title"), media?.optString("state"),
+                val sig = listOf(front, Tv.isOn, v["level"], v["muted"], media?.optString("title"), media?.optString("subtitle"), media?.optString("state"), media?.opt("duration_ms"),
                     sleepEnds, who, Adb.connected).joinToString("|")
                 if (sig != lastSig) { lastSig = sig; push() }
             } catch (e: Exception) { android.util.Log.w("couchtv", "now loop: ${e.message}") }

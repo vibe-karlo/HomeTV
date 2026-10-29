@@ -95,6 +95,9 @@ object Tv {
         return "intent"
     }
 
+    /** Starts an activity another part of the app built (Watch Next links, inputs). */
+    fun startIntent(i: Intent) = start(i)
+
     private fun start(i: Intent) {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         var err: Exception? = null

@@ -43,6 +43,29 @@ svg { display: block; }
 .round:active { background: var(--surface-hi); }
 #power.off { color: var(--ink-3); }
 
+/* ---------------------------------------------------------------- now playing */
+
+#playing { display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 10px; border-radius: 28px; background: var(--surface); box-shadow: var(--edge); }
+#playing[hidden] { display: none; }
+#pl-top { display: flex; align-items: center; gap: 14px; min-width: 0; }
+#pl-art { flex: none; width: 92px; height: 52px; border-radius: 12px; background: #131210 center / cover no-repeat; box-shadow: var(--edge); }
+#pl-art[hidden] { display: none; }
+#pl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#pl-title { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#pl-sub { font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#pl-sub:empty { display: none; }
+#pl-bar[hidden] { display: none; }
+#pl-track { display: block; height: 5px; border-radius: 3px; background: rgba(246, 243, 238, 0.12); overflow: hidden; }
+#pl-fill { display: block; height: 100%; width: 0; border-radius: 3px; background: rgba(246, 243, 238, 0.82); transition: width 1s linear; }
+#pl-times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+#pl-ctl { display: flex; justify-content: center; align-items: center; gap: 6px; }
+#pl-ctl button { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; transition: background-color 120ms var(--ease); }
+#pl-ctl button.gone { visibility: hidden; }
+#pl-ctl button svg { width: 28px; height: 28px; }
+#pl-ctl button:active { background: var(--surface-hi); }
+#pl-toggle { width: 62px; height: 62px; background: var(--ink); color: #15130f; }
+#pl-toggle:active { background: #d9d5ce; }
+
 /* ---------------------------------------------------------------- pad */
 
 #pad {
@@ -119,6 +142,15 @@ svg { display: block; }
 .app i { display: block; aspect-ratio: 16 / 9; border-radius: 14px; background: #131210 center / cover no-repeat; box-shadow: var(--edge); }
 .app span { font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app:active i { opacity: 0.75; }
+#inputs-top { margin: 26px 0 8px; font-size: 17px; font-weight: 600; }
+#inputs-top[hidden] { display: none; }
+#inputs-list { display: flex; flex-direction: column; }
+.input { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 4px; text-align: left; }
+.input .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.input b { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.input span { font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.input.off b, .input.off span { color: var(--ink-3); }
+.input:active b { opacity: 0.7; }
 
 /* ---------------------------------------------------------------- pairing */
 

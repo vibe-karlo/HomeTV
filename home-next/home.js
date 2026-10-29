@@ -8,7 +8,7 @@ window.HOME_READY.then(function () {
   // Settings the home reads. On the TV the app keeps these; the preview keeps them in this browser.
   var prefs = { background: "shows", aerialCats: ["Landscapes", "Cities", "Space", "Underwater"], screensaver: true,
     screensaverAfter: 10, clock: "24h", hidden: [], philipsButton: "com.stremio.one", rakutenButton: "com.spotify.tv.android",
-    hiddenGenres: ["Horror", "Sci-Fi"], sport: true, tvnow: true };
+    hiddenGenres: ["Horror", "Sci-Fi"], sport: true, tvnow: true, weather: true };
   try { Object.assign(prefs, JSON.parse((TV ? TV.kept("couch:prefs") : localStorage.getItem("couch:prefs")) || "{}")); } catch (e) {}
   if (/[?&]bg=aerial/.test(location.search)) prefs.background = "aerial";
   function savePrefs() {
@@ -83,7 +83,10 @@ window.HOME_READY.then(function () {
   var heroCur = 0, heroItem = null, heroToken = 0;
   var SOURCE = { netflix: "Netflix", stremio: "Stremio" };
   var cache = {};
-  function art(url, w) { return TV && url ? "/img?w=" + w + "&u=" + encodeURIComponent(url) : url; }
+  // Pictures from the web go through the TV's shrinking cache; the TV's own (Watch Next artwork) are already small.
+  function art(url, w) { return TV && url && url.charAt(0) !== "/" ? "/img?w=" + w + "&u=" + encodeURIComponent(url) : url; }
+  // Where a show opens: Netflix or Stremio for the suggestions, the app itself for what an app reported.
+  function srcName(it) { return it.kind === "watchnext" ? it.service : SOURCE[it.opens || it.source]; }
   // Remembers only the last few pictures: each decoded backdrop is megabytes on a 2 GB TV.
   var cacheOrder = [];
   function load(url) {
@@ -156,34 +159,39 @@ window.HOME_READY.then(function () {
     heroItem = item;
     var token = ++heroToken;
     var bg = art(item.bg, 1280), logo = art(item.logo, 640);
-    Promise.all([load(bg), load(logo).catch(function () { return null; })]).then(function (r) {
+    Promise.all([bg ? load(bg) : Promise.resolve(null), logo ? load(logo).catch(function () { return null; }) : null]).then(function (r) {
       if (token !== heroToken) return;
       var next = heroLayers[1 - heroCur];
-      next.style.backgroundImage = "url(" + bg + ")";
+      next.style.backgroundImage = r[0] ? "url(" + bg + ")" : "none";   // no picture: the dark title card
       next.classList.remove("drift"); void next.offsetWidth; next.classList.add("drift");
       next.classList.add("on"); heroLayers[heroCur].classList.remove("on"); heroCur = 1 - heroCur;
-      paintFrost(r[0]);
+      if (r[0]) paintFrost(r[0]);
       stage.classList.add("swap");
       setTimeout(function () {
         if (token !== heroToken) return;
         var t = $("#hero-title"); t.textContent = "";
         if (r[1]) { var im = document.createElement("img"); im.src = logo; im.alt = item.title; t.appendChild(im); }
         else { var s = document.createElement("div"); s.className = "text-title"; s.textContent = item.title; t.appendChild(s); }
-        var meta = ['<span class="src">' + SOURCE[item.opens || item.source] + "</span>"];
+        var meta = ['<span class="src">' + srcName(item) + "</span>"];
         if (item.episode) meta.push(item.episode);
-        else meta.push(item.type === "series" ? "Series" : "Film");
+        else if (item.kind !== "watchnext") meta.push(item.type === "series" ? "Series" : "Film");
+        if (item.episode_title) meta.push(item.episode_title);
+        if (item.progress) meta.push(Math.max(1, Math.round((1 - item.progress) * 100)) + "% left");
         if (item.year) meta.push(item.year);
         if (item.rating) meta.push("IMDb " + item.rating);
         if (item.genres && item.genres.length) meta.push(item.genres.slice(0, 2).join(", "));
-        $("#hero-meta").innerHTML = meta.join('<span class="sep">·</span>');
+        $("#hero-meta").innerHTML = meta.map(function (m, i) { return i ? esc(m) : m; }).join('<span class="sep">·</span>');
         $("#hero-desc").textContent = item.description || "";
         $("#hero").classList.remove("event", "sport");
-        $("#hero-watch .label").textContent = "Watch on " + SOURCE[item.opens || item.source];
+        $("#hero").classList.toggle("event", !r[0]);
+        $("#hero-watch .label").textContent = (item.kind === "watchnext" ? "Resume in " : "Watch on ") + srcName(item);
         $("#hero-watch").classList.remove("none");
         stage.classList.remove("swap");
       }, 260);
     }, function () { if (token === heroToken) heroItem = null; });
   }
+
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
   // ---------------------------------------------------------------- dock
 
@@ -255,8 +263,10 @@ window.HOME_READY.then(function () {
           c.querySelector(".caption").textContent = (it.episode ? it.title + " · " + it.episode : it.title + (it.year ? " · " + it.year : "")) +
             (it.rating ? " · IMDb " + it.rating : "");
           var logo = art(it.logo, 320);
-          load(logo).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
+          (logo ? load(logo) : Promise.reject()).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
             var f = document.createElement("span"); f.className = "fallback"; f.textContent = it.title; c.insertBefore(f, c.querySelector(".dim"));
+            // An app's card with no picture still says where it plays.
+            if (it.kind === "watchnext" && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }
           });
           c.addEventListener("click", function () { pointer("rows", ri, ci); });
           track.appendChild(c);
@@ -272,23 +282,24 @@ window.HOME_READY.then(function () {
   function paintNear(ri) {
     for (var i = Math.max(0, ri - 1); i <= Math.min(rows.length - 1, ri + 1); i++) {
       var r = rows[i], upto = Math.min(r.cards.length, r.col + 7);
-      for (var c = r.painted; c < upto; c++) r.cards[c].style.backgroundImage = "url(" + art(r.items[c].bg, 480) + ")";
+      for (var c = r.painted; c < upto; c++) if (r.items[c].bg) r.cards[c].style.backgroundImage = "url(" + art(r.items[c].bg, 480) + ")";
       r.painted = Math.max(r.painted, upto);
     }
   }
 
   // ---------------------------------------------------------------- focus model
 
-  var st = { zone: "dock", dock: 0, row: 0 };
+  var st = { zone: "dock", dock: 0, row: 0, top: 0 };
   var focused = null, heroTimer = null, rotateTimer = null, rotateIdx = 0;
   var TILE = 260 + 32, CARD = 418 + 34;
 
   function render() {
     if (!rows.length && st.zone === "rows") st.zone = "dock";
-    var el = st.zone === "top" ? $("#top-gear") : st.zone === "hero" ? $("#hero-watch") : st.zone === "dock" ? tiles[st.dock] : rows[st.row].cards[rows[st.row].col];
+    var el = st.zone === "top" ? (st.top === 1 ? $("#clock") : $("#top-gear")) : st.zone === "hero" ? $("#hero-watch") : st.zone === "dock" ? tiles[st.dock] : rows[st.row].cards[rows[st.row].col];
     if (focused && focused !== el) focused.classList.remove("focus");
     el.classList.add("focus"); focused = el;
     document.body.classList.toggle("browse", st.zone === "rows");
+    document.body.classList.toggle("forecast", st.zone === "top" && st.top === 1);
 
     // Dock: hold focus near the left once it passes the fifth tile.
     var first = Math.max(0, Math.min(st.dock - 4, apps.length - 6));
@@ -410,6 +421,7 @@ window.HOME_READY.then(function () {
   function move(dx, dy) {
     if (moving) { if (dx) shiftApp(dx); return; }
     if (st.zone === "top") {
+      if (dx && weather) st.top = dx > 0 ? 1 : 0;   // the gear, then the weather beside the clock
       if (dy > 0) st.zone = !aerial.on && heroItem ? "hero" : "dock";
       render(); return;
     }
@@ -436,6 +448,7 @@ window.HOME_READY.then(function () {
     if (Date.now() < busyUntil) return;
     busyUntil = Date.now() + 2500;
     if (st.zone === "hero") { openShow(heroItem); return; }
+    if (st.zone === "top" && st.top === 1) { busyUntil = 0; return; }   // the forecast is already open
     if (st.zone === "top") { busyUntil = 0; clearInterval(rotateTimer); aerialActive(false); window.Settings.open(); return; }
     if (st.zone === "dock") {
       var a = apps[st.dock];
@@ -453,10 +466,12 @@ window.HOME_READY.then(function () {
       if (TV) TV.launch(it.opens);
       return;
     }
-    // Netflix when TMDB lists it there for Croatia, Stremio otherwise.
-    toast("Opening “" + it.title + "” in " + SOURCE[it.opens || it.source]);
+    // Netflix when TMDB lists it there for Croatia, Stremio otherwise; an app's own card opens in that app.
+    toast("Opening “" + it.title + "” in " + srcName(it));
     if (!TV) return;
-    fetch("/api/open-show", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(it) })
+    var wn = it.kind === "watchnext";
+    fetch(wn ? "/api/watchnext/open" : "/api/open-show", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(wn ? { id: it.id } : it) })
       .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) toast(d.error || "Could not open it"); }, function () { toast("Could not reach the TV app"); });
   }
@@ -491,7 +506,7 @@ window.HOME_READY.then(function () {
   function removeContinue(it) {
     var row = DATA.rows.filter(function (r) { return r.id === "continue"; })[0];
     row.items = row.items.filter(function (x) { return x.id !== it.id; });
-    if (TV) fetch("/api/continue/remove", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: it.id }) });
+    if (TV) fetch("/api/continue/remove", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: it.id, at: it.at || 0 }) });
     heroItem = null; buildRows(); render();
     toast("Removed “" + it.title + "”");
   }
@@ -529,6 +544,74 @@ window.HOME_READY.then(function () {
     wheelLock = Date.now() + 380; move(0, e.deltaY > 0 ? 1 : -1);
   }, { passive: true });
 
+  // ---------------------------------------------------------------- weather (Open-Meteo, from the TV app), beside the clock
+
+  // Drawn for HomeTV in the gear's language: 72 grid, 4px round strokes. The cloud is one shape reused.
+  var CLOUD = "M24 50H50A10 10 0 0 0 50 30A14 14 0 0 0 23.5 27A11.5 11.5 0 0 0 24 50Z";
+  function rays(cx, cy, r1, r2, from, to) {
+    var d = "";
+    for (var a = from; a <= to; a += 45) {
+      var t = a * Math.PI / 180;
+      d += "M" + (cx + r1 * Math.cos(t)).toFixed(1) + " " + (cy + r1 * Math.sin(t)).toFixed(1) +
+        "L" + (cx + r2 * Math.cos(t)).toFixed(1) + " " + (cy + r2 * Math.sin(t)).toFixed(1);
+    }
+    return '<path d="' + d + '"/>';
+  }
+  var MOON = '<path d="M47 45.5A17 17 0 0 1 30.5 19 18.5 18.5 0 1 0 53 41.5 17 17 0 0 1 47 45.5Z"/>';
+  function glyph(code, day) {
+    var svg = function (body) {
+      return '<svg viewBox="0 0 72 72" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' + body + "</svg>";
+    };
+    var cloudUp = '<path d="' + CLOUD + '" transform="translate(0 -7)"/>';
+    if (code <= 1) return svg(day ? '<circle cx="36" cy="36" r="10"/>' + rays(36, 36, 17, 23, 0, 315)
+      : '<g transform="translate(-6 -2)">' + MOON + "</g>");
+    if (code === 2) {
+      // The sun or moon sits behind the cloud: a mask keeps its strokes out of the cloud.
+      var behind = day ? '<circle cx="27" cy="27" r="8"/>' + rays(27, 27, 13.5, 18.5, 135, 315) : '<g transform="translate(-14 -12) scale(0.8)">' + MOON + "</g>";
+      return svg('<mask id="wxm' + code + day + '"><rect width="72" height="72" fill="#fff"/><path d="' + CLOUD +
+        '" transform="translate(5 6)" fill="#000" stroke="#000" stroke-width="10"/></mask><g mask="url(#wxm' + code + day + ')">' + behind +
+        '</g><path d="' + CLOUD + '" transform="translate(5 6)"/>');
+    }
+    if (code === 3) return svg('<path d="' + CLOUD + '" transform="translate(0 -2)"/>');
+    if (code === 45 || code === 48) return svg('<path d="M16 26h40M22 36h34M16 46h32M28 56h18"/>');
+    if (code >= 95) return svg(cloudUp + '<path d="M38 47l-6 10h9l-6 10"/>');
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86)
+      return svg(cloudUp + '<path d="M25 54h.01M36 59h.01M47 54h.01M30 64h.01M42 64h.01" stroke-width="5"/>');
+    return svg(cloudUp + '<path d="M27 51l-3 9M38 51l-3 9M49 51l-3 9"/>');   // drizzle, rain, showers
+  }
+
+  var weather = null;
+  // The preview has no TV app: a sample day, so the layout can be seen.
+  var SAMPLE_WX = { set: true, place: "Sample", temp: 14, code: 2, text: "Partly cloudy", is_day: true, high: 17, low: 8,
+    hours: [[ "15:00", 15, 2, 1 ], ["16:00", 15, 3, 1], ["17:00", 13, 61, 1], ["18:00", 12, 61, 0], ["19:00", 11, 3, 0], ["20:00", 10, 0, 0]]
+      .map(function (h) { return { time: h[0], temp: h[1], code: h[2], text: "", is_day: !!h[3] }; }) };
+  function showWeather(w) {
+    weather = w && w.set && prefs.weather ? w : null;
+    $("#wx").hidden = !weather;
+    $("#clock").classList.toggle("focusable", !!weather);
+    if (!weather) { if (st.zone === "top" && st.top === 1) { st.top = 0; render(); } return; }
+    $("#wx-glyph").innerHTML = glyph(w.code, w.is_day);
+    $("#wx-temp").textContent = w.temp + "°";
+    $("#fc-place").textContent = w.place;
+    $("#fc-now").textContent = [w.text, w.high != null ? "High " + w.high + "°" : "", w.low != null ? "Low " + w.low + "°" : ""]
+      .filter(Boolean).join("  ·  ");
+    var hours = $("#fc-hours"); hours.textContent = "";
+    (w.hours || []).slice(0, 6).forEach(function (h) {
+      var c = document.createElement("div"); c.className = "fc-hour";
+      c.innerHTML = '<span class="t"></span>' + glyph(h.code, h.is_day) + '<span class="v"></span>';
+      c.querySelector(".t").textContent = h.time.replace(/^0/, "");
+      c.querySelector(".v").textContent = h.temp + "°";
+      hours.appendChild(c);
+    });
+    placeFrost();
+  }
+  function refreshWeather() {
+    if (!prefs.weather) { showWeather(null); return; }
+    if (!TV) { showWeather(SAMPLE_WX); return; }
+    fetch("/api/weather").then(function (r) { return r.json(); }).then(function (d) { showWeather(d.ok ? d : null); }, function () {});
+  }
+  setInterval(refreshWeather, 30 * 60e3);
+
   // ---------------------------------------------------------------- clock + toast
 
   function tick() {
@@ -545,7 +628,8 @@ window.HOME_READY.then(function () {
 
   window.Home = {
     prefs: prefs, apps: DATA.apps, aerialCount: function (cat) { return AERIALS.filter(function (a) { return a.cat === cat; }).length; },
-    save: function () { savePrefs(); tick(); },
+    save: function () { savePrefs(); tick(); refreshWeather(); },
+    weather: function () { return weather; },
     setBackground: function (mode) { setBackground(mode); clearInterval(rotateTimer); aerialActive(false); },
     newAerial: function () { if (aerial.on && aerial.clip && prefs.aerialCats.indexOf(aerial.clip.cat) < 0) aerial.clip = null; },
     rebuildDock: function () { buildDock(); render(); clearInterval(rotateTimer); aerialActive(false); },
@@ -573,8 +657,27 @@ window.HOME_READY.then(function () {
     resume: function () {
       if (Date.now() - loadedAt > 3 * 3600e3) { location.reload(); return; }   // fresh shows a few times a day
       followFocus();
+      refreshContinue();
+      refreshWeather();
     }
   };
+  // Back from an app: what it says you are in the middle of has probably changed.
+  function refreshContinue() {
+    if (!TV) return;
+    fetch("/api/continue-row").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok || !d.row) return;
+      var old = DATA.rows.filter(function (r) { return r.id === "continue"; })[0];
+      if (old && JSON.stringify(old.items) === JSON.stringify(d.row.items)) return;
+      DATA.rows = DATA.rows.filter(function (r) { return r.id !== "continue"; });
+      if (d.row.items.length) DATA.rows.unshift(d.row);
+      var keep = st.zone === "rows" && rows[st.row] ? rows[st.row].id : null;
+      buildRows();
+      if (keep && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) st.row = i; }
+      if (st.zone === "rows" && !rows.length) st.zone = "dock";
+      render();
+    }, function () {});
+  }
+
   addEventListener("visibilitychange", function () { if (document.hidden) { clearInterval(rotateTimer); aerialActive(false); } });
 
   $("#top-gear").insertAdjacentHTML("beforeend", GEAR.replace('stroke="#f6f3ee"', 'stroke="currentColor"'));
@@ -582,6 +685,7 @@ window.HOME_READY.then(function () {
   buildDock();
   buildRows();
   placeFrost();
+  refreshWeather();
   document.body.classList.toggle("aerial", aerial.on);
   render();
 });

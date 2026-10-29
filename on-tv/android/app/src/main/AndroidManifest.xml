@@ -22,6 +22,9 @@
     <!-- Usage access (granted over ADB, as above): which app is in front, without a heavy dumpsys. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
+    <!-- Android TV's Watch Next list, for Continue Watching. Asked for on the TV, or granted over ADB. -->
+    <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
@@ -104,6 +107,18 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Local-network server for a phone remote control of this TV" />
+        </service>
+
+        <!-- Notification access, used only to see media sessions (what is playing, play and skip from the phone).
+             HomeTV reads no notifications. Turned on over ADB, or under Special app access. -->
+        <service
+            android:name=".MediaListener"
+            android:exported="true"
+            android:label="HomeTV now playing"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
         </service>
 
         <receiver android:name=".BootReceiver" android:exported="true">
