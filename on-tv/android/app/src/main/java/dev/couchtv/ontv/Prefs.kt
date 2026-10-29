@@ -28,6 +28,9 @@ object Prefs {
 
     fun sportOn(): Boolean = json().optBoolean("sport", true)
     fun tvNowOn(): Boolean = json().optBoolean("tvnow", true)
+    /** The channels in the Live TV slider (Settings, Live TV), by name. */
+    fun tvNowChannels(): List<String> = json().optJSONArray("tvnowChannels")?.let { a -> (0 until a.length()).map { a.optString(it) } }
+        ?: Sports.NOW_CHANNELS
 
     fun button(which: String): String = json().optString(if (which == "philips") "philipsButton" else "rakutenButton")
         .ifEmpty { if (which == "philips") "com.stremio.one" else "com.spotify.tv.android" }
@@ -35,6 +38,7 @@ object Prefs {
     /** Called when the page saves its settings. */
     fun changed() {
         Aerials.changed()
+        AppRows.changed()
         applyScreensaver()
     }
 

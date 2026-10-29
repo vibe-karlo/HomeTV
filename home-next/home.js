@@ -86,7 +86,9 @@ window.HOME_READY.then(function () {
   // Pictures from the web go through the TV's shrinking cache; the TV's own (Watch Next artwork) are already small.
   function art(url, w) { return TV && url && url.charAt(0) !== "/" ? "/img?w=" + w + "&u=" + encodeURIComponent(url) : url; }
   // Where a show opens: Netflix or Stremio for the suggestions, the app itself for what an app reported.
-  function srcName(it) { return it.kind === "watchnext" ? it.service : SOURCE[it.opens || it.source]; }
+  function srcName(it) { return it.kind === "watchnext" || it.kind === "approw" ? it.service : SOURCE[it.opens || it.source]; }
+  // A card from an app's own row: a live programme says when, like the sport at the top.
+  function fromApp(it) { return it.kind === "watchnext" || it.kind === "approw"; }
   // Remembers only the last few pictures: each decoded backdrop is megabytes on a 2 GB TV.
   var cacheOrder = [];
   function load(url) {
@@ -173,8 +175,10 @@ window.HOME_READY.then(function () {
         if (r[1]) { var im = document.createElement("img"); im.src = logo; im.alt = item.title; t.appendChild(im); }
         else { var s = document.createElement("div"); s.className = "text-title"; s.textContent = item.title; t.appendChild(s); }
         var meta = ['<span class="src">' + srcName(item) + "</span>"];
+        if (item.kind === "approw" && item.start && item.stop) meta.push(when({ start: item.start, stop: item.stop, tv: true }));
+        else if (item.kind === "approw" && item.live) meta.push("Live");
         if (item.episode) meta.push(item.episode);
-        else if (item.kind !== "watchnext") meta.push(item.type === "series" ? "Series" : "Film");
+        else if (!fromApp(item)) meta.push(item.type === "series" ? "Series" : "Film");
         if (item.episode_title) meta.push(item.episode_title);
         if (item.progress) meta.push(Math.max(1, Math.round((1 - item.progress) * 100)) + "% left");
         if (item.year) meta.push(item.year);
@@ -184,7 +188,7 @@ window.HOME_READY.then(function () {
         $("#hero-desc").textContent = item.description || "";
         $("#hero").classList.remove("event", "sport");
         $("#hero").classList.toggle("event", !r[0]);
-        $("#hero-watch .label").textContent = (item.kind === "watchnext" ? "Resume in " : "Watch on ") + srcName(item);
+        $("#hero-watch .label").textContent = (item.kind === "watchnext" ? "Resume in " : item.kind === "approw" ? "Open in " : "Watch on ") + srcName(item);
         $("#hero-watch").classList.remove("none");
         stage.classList.remove("swap");
       }, 260);
@@ -266,7 +270,7 @@ window.HOME_READY.then(function () {
           (logo ? load(logo) : Promise.reject()).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
             var f = document.createElement("span"); f.className = "fallback"; f.textContent = it.title; c.insertBefore(f, c.querySelector(".dim"));
             // An app's card with no picture still says where it plays.
-            if (it.kind === "watchnext" && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }
+            if (fromApp(it) && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }
           });
           c.addEventListener("click", function () { pointer("rows", ri, ci); });
           track.appendChild(c);
@@ -469,9 +473,9 @@ window.HOME_READY.then(function () {
     // Netflix when TMDB lists it there for Croatia, Stremio otherwise; an app's own card opens in that app.
     toast("Opening “" + it.title + "” in " + srcName(it));
     if (!TV) return;
-    var wn = it.kind === "watchnext";
-    fetch(wn ? "/api/watchnext/open" : "/api/open-show", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify(wn ? { id: it.id } : it) })
+    var wn = fromApp(it);
+    fetch(it.kind === "watchnext" ? "/api/watchnext/open" : it.kind === "approw" ? "/api/approw/open" : "/api/open-show",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wn ? { id: it.id } : it) })
       .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) toast(d.error || "Could not open it"); }, function () { toast("Could not reach the TV app"); });
   }
@@ -626,6 +630,15 @@ window.HOME_READY.then(function () {
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("on"); }, 1900);
   }
 
+  // The preview has no TV app: one sample row as an operator might publish it, to see the layout.
+  if (!TV && !DATA.rows.some(function (r) { return r.id.indexOf("app:") === 0; })) {
+    var now = Date.now(), h = 3600e3;
+    DATA.rows.splice(1, 0, { id: "app:hr.telekom.android.maxtvp|Sljedeće", title: "MAXtv · Sljedeće", items: [
+      { id: "ar:1", kind: "approw", title: "Dnevnik HRT", service: "MAXtv", live: true, start: now - h / 3, stop: now + h / 3, bg: null, genres: [], description: "HRT 1" },
+      { id: "ar:2", kind: "approw", title: "Magazin Lige prvaka", service: "MAXtv", live: false, start: now + h, stop: now + 2 * h, bg: null, genres: [], description: "MAXSport 1" }] });
+    buildRows();
+  }
+
   window.Home = {
     prefs: prefs, apps: DATA.apps, aerialCount: function (cat) { return AERIALS.filter(function (a) { return a.cat === cat; }).length; },
     save: function () { savePrefs(); tick(); refreshWeather(); },
@@ -633,6 +646,7 @@ window.HOME_READY.then(function () {
     setBackground: function (mode) { setBackground(mode); clearInterval(rotateTimer); aerialActive(false); },
     newAerial: function () { if (aerial.on && aerial.clip && prefs.aerialCats.indexOf(aerial.clip.cat) < 0) aerial.clip = null; },
     rebuildDock: function () { buildDock(); render(); clearInterval(rotateTimer); aerialActive(false); },
+    refreshRows: function () { refreshContinue(); },
     rebuildRows: function () { heroItem = null; buildRows(); render(); clearInterval(rotateTimer); aerialActive(false); },
     genres: function () {
       var seen = {};
@@ -664,12 +678,13 @@ window.HOME_READY.then(function () {
   // Back from an app: what it says you are in the middle of has probably changed.
   function refreshContinue() {
     if (!TV) return;
-    fetch("/api/continue-row").then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok || !d.row) return;
-      var old = DATA.rows.filter(function (r) { return r.id === "continue"; })[0];
-      if (old && JSON.stringify(old.items) === JSON.stringify(d.row.items)) return;
-      DATA.rows = DATA.rows.filter(function (r) { return r.id !== "continue"; });
-      if (d.row.items.length) DATA.rows.unshift(d.row);
+    Promise.all([fetch("/api/continue-row").then(function (r) { return r.json(); }),
+      fetch("/api/app-rows/shown").then(function (r) { return r.json(); })]).then(function (d) {
+      if (!d[0].ok || !d[1].ok) return;
+      var isOurs = function (r) { return r.id === "continue" || r.id.indexOf("app:") === 0; };
+      var fresh = (d[0].row.items.length ? [d[0].row] : []).concat(d[1].rows.filter(function (r) { return r.items.length; }));
+      if (JSON.stringify(DATA.rows.filter(isOurs)) === JSON.stringify(fresh)) return;
+      DATA.rows = fresh.concat(DATA.rows.filter(function (r) { return !isOurs(r); }));
       var keep = st.zone === "rows" && rows[st.row] ? rows[st.row].id : null;
       buildRows();
       if (keep && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) st.row = i; }

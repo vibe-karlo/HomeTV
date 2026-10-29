@@ -53,8 +53,12 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 ?.let { newFixedLengthResponse(Response.Status.OK, "image/jpeg", java.io.ByteArrayInputStream(it), it.size.toLong()) }
                 ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             // Artwork of what you watch: only for the home screen and paired phones.
-            uri.startsWith("/watchnext/art/") || uri == "/now/art" -> if (!authed(s)) json(401, err("pair this phone first")) else
-                (if (uri == "/now/art") Media.art() else WatchNext.art(uri.removePrefix("/watchnext/art/"))?.readBytes())
+            uri.startsWith("/watchnext/art/") || uri.startsWith("/approws/art/") || uri == "/now/art" -> if (!authed(s)) json(401, err("pair this phone first")) else
+                (when {
+                    uri == "/now/art" -> Media.art()
+                    uri.startsWith("/approws/") -> AppRows.art(uri.removePrefix("/approws/art/"))?.readBytes()
+                    else -> WatchNext.art(uri.removePrefix("/watchnext/art/"))?.readBytes()
+                })
                     ?.let { newFixedLengthResponse(Response.Status.OK, "image/jpeg", java.io.ByteArrayInputStream(it), it.size.toLong()).noStore() }
                     ?: newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             // The phone remote pairs by itself, so it gets no pairing shim.
@@ -134,19 +138,26 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/home-data" -> {
                 val shows = Shows.rows()
                 val rows = JSONArray().put(Shows.continueRow())
+                // The rows the TV's apps publish (MAXtv, EON, Netflix...), after what you are in the middle of.
+                AppRows.shown().let { a -> for (i in 0 until a.length()) rows.put(a.get(i)) }
                 shows.optJSONArray("rows")?.let { r -> for (i in 0 until r.length()) rows.put(r.get(i)) }
                 json(200, ok().put("rows", rows).put("aerials", Aerials.list()).put("address", App.lanAddress() ?: JSONObject.NULL)
                     .put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
-                    .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Sports.NOW_CHANNELS) else JSONArray())
+                    .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Prefs.tvNowChannels()) else JSONArray())
                     .put("port", Store.port).put("version", BuildConfig.VERSION_NAME))
             }
             "POST /api/open-show" -> json(200, Shows.open(body(s)))
             "GET /api/sport" -> json(200, ok().put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
-                .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Sports.NOW_CHANNELS) else JSONArray()))
+                .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Prefs.tvNowChannels()) else JSONArray()))
             "POST /api/continue/remove" -> { val b = body(s); Shows.forget(b.optString("id"), b.optLong("at")); json(200, ok()) }
             // Continue Watching again, when the home screen comes back from an app.
             "GET /api/continue-row" -> json(200, ok().put("row", Shows.continueRow()).put("watchNext", WatchNext.allowed()))
             "POST /api/watchnext/open" -> json(200, WatchNext.open(body(s).optString("id")))
+            // App rows: every one there is (for Settings), the shown ones again, and opening a card.
+            "GET /api/app-rows" -> json(200, ok().put("rows", AppRows.choices()).put("allowed", WatchNext.allowed()))
+            "GET /api/app-rows/shown" -> { AppRows.changed(); json(200, ok().put("rows", AppRows.shown())) }
+            "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
+            "GET /api/live-channels" -> json(200, ok().put("channels", JSONArray(Sports.CHANNELS.values.toList())))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
             "GET /api/tv-apps" -> {
                 val p = Prefs.json()

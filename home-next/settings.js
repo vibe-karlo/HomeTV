@@ -6,6 +6,22 @@ window.HOME_READY.then(function () {
     return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
   }
 
+  // Channels the Live TV slider can show (TvProfil's free daily guides), in the guide's order.
+  var LIVE = ["HRT 1", "HRT 2", "HRT 3", "HRT 4", "RTL", "RTL 2", "Nova TV", "Doma TV", "HBO", "CineStar TV", "SciFi", "CMC",
+    "Eurosport", "Sport Klub", "Arena Sport 1"];
+  function liveChannels() { return P.tvnowChannels || ["RTL", "Nova TV"]; }
+
+  // The rows the TV's apps publish, asked for when the page opens.
+  var appRows = null, appRowsAllowed = true;
+  var SAMPLE_ROWS = [{ key: "hr.telekom.android.maxtvp|Sljedeće", title: "MAXtv · Sljedeće", count: 12, shown: true },
+    { key: "uc.flex.hr.smarttv|Preporučeno", title: "EON · Preporučeno", count: 10, shown: false },
+    { key: "com.netflix.ninja|Netflix", title: "Netflix", count: 20, shown: false }];
+  function loadAppRows() {
+    var got = TV ? fetch("/api/app-rows").then(function (r) { return r.json(); }) : Promise.resolve({ ok: true, rows: SAMPLE_ROWS, allowed: true });
+    got.then(function (d) { appRows = d.rows || []; appRowsAllowed = d.allowed !== false; if (openFlag) draw(); },
+      function () { appRows = []; if (openFlag) draw(); });
+  }
+
   // The TV's sources, asked for each time the page opens (a console can be switched on in between).
   var inputs = null;
   var SAMPLE_INPUTS = [
@@ -66,9 +82,10 @@ window.HOME_READY.then(function () {
         { label: "Live Sport", value: P.sport ? "On" : "Off",
           help: "F1 and NK Osijek broadcasts at the top of the home screen. MAXSport and Arena Sport open MAXtv, other channels open EON.",
           act: function () { P.sport = !P.sport; H.save(); H.rebuildRows(); } },
-        { label: "Live TV", value: P.tvnow ? "On" : "Off",
-          help: "What\u2019s on now on RTL and Nova TV, in the slider at the top. Opens EON.",
-          act: function () { P.tvnow = !P.tvnow; H.save(); H.rebuildRows(); } },
+        { label: "Live TV", menu: "live", value: P.tvnow ? liveChannels().length + " channels" : "Off",
+          help: "What\u2019s on now on the channels you pick, in the slider at the top. From TvProfil\u2019s free guide; opens EON." },
+        { label: "App Rows", menu: "approws", value: appRows ? appRows.filter(function (r) { return r.shown; }).length + " shown" : "",
+          help: "The rows your apps put on Android TV\u2019s home screen, like MAXtv\u2019s Sljede\u0107e, with their own pictures." },
         { label: "Hidden Genres", menu: "genres",
           value: P.hiddenGenres.length ? P.hiddenGenres.join(", ") : "None",
           help: "Shows in these genres stay out of the suggestions. Continue Watching keeps everything." },
@@ -95,6 +112,38 @@ window.HOME_READY.then(function () {
             if (!TV) return;
             post("/api/inputs/open", { id: i.id }).then(function (d) { if (!d.ok) H.toast(d.error || "The TV would not switch"); },
               function () { H.toast("Could not reach the TV app"); });
+          } };
+      });
+    } },
+
+    live: { title: "Live TV", rows: function () {
+      var on = liveChannels();
+      return [{ label: "In the Slider", value: P.tvnow ? "On" : "Off",
+        help: "Show what\u2019s on now at the top of the home screen, between the shows.",
+        act: function () { P.tvnow = !P.tvnow; H.save(); H.rebuildRows(); } }].concat(LIVE.map(function (c) {
+        return { label: c, tick: on.indexOf(c) >= 0, off: !P.tvnow,
+          help: on.indexOf(c) >= 0 ? "Select to take " + c + " out of the slider." : "Select to show what\u2019s on " + c + " now.",
+          act: function () {
+            var l = liveChannels().slice(), i = l.indexOf(c);
+            if (i >= 0) l.splice(i, 1); else l.push(c);
+            P.tvnowChannels = LIVE.filter(function (x) { return l.indexOf(x) >= 0; });   // keep the guide's order
+            H.save(); H.toast(i >= 0 ? c + " is out of the slider" : c + " joins the slider within a minute");
+          } };
+      }));
+    } },
+
+    approws: { title: "App Rows", enter: loadAppRows, rows: function () {
+      if (!appRows) return [{ label: "Looking for rows", help: "Asking the TV which rows its apps publish." }];
+      if (!appRows.length) return [{ label: "No rows yet", help: appRowsAllowed
+        ? "None of your apps has put a row on Android TV\u2019s home screen. Open MAXtv or EON once; they add theirs when they run."
+        : "HomeTV needs the TV listings permission to see them. Connect debugging once in setup, or allow it when the TV asks." }];
+      return appRows.map(function (r) {
+        return { label: r.title, tick: r.shown, value: r.count + (r.count === 1 ? " item" : " items"),
+          help: r.shown ? "Shown under Continue Watching. Select to hide it." : "Select to show it under Continue Watching.",
+          act: function () {
+            r.shown = !r.shown;
+            P.appRows = appRows.filter(function (x) { return x.shown; }).map(function (x) { return x.key; });
+            H.save(); H.refreshRows();
           } };
       });
     } },
@@ -206,7 +255,9 @@ window.HOME_READY.then(function () {
       var li = document.createElement("li");
       li.className = "set-row" + (r.off ? " off" : "") + (i === pg.focus ? " focus" : "");
       li.innerHTML = (r.dot ? '<span class="dot"></span>' : "") + '<span class="label"></span>' + (r.value ? '<span class="value"></span>' : "") +
-        (r.tick ? TICK : "") + (r.menu ? CHEV : "") + (r.ext ? EXT : "");
+        // A row that can be ticked keeps the tick's space when it is not, so the values line up.
+        ("tick" in r ? (r.tick ? TICK : TICK.replace('class="tick"', 'class="tick" style="visibility:hidden"')) : "") +
+        (r.menu ? CHEV : "") + (r.ext ? EXT : "");
       li.querySelector(".label").textContent = r.label;
       if (r.dot) li.querySelector(".dot").style.background = r.dot;
       if (r.value) li.querySelector(".value").textContent = r.value;
@@ -237,7 +288,7 @@ window.HOME_READY.then(function () {
   var openFlag = false;
   function open() {
     stack = [{ id: "root", focus: 0 }]; side = null;
-    loadInputs();
+    loadInputs(); loadAppRows();
     el.hidden = false; void el.offsetWidth; el.classList.add("open"); openFlag = true;
     draw();
   }

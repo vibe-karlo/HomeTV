@@ -79,7 +79,7 @@ object WatchNext {
                     val pos = if (c.isNull(7)) 0L else c.getLong(7)
                     val dur = if (c.isNull(12)) 0L else c.getLong(12)
                     val artUri = str(c, 8).ifEmpty { str(c, 9) }
-                    val art = if (artUri.isEmpty()) null else cachedArt(artUri)
+                    val art = if (artUri.isEmpty()) null else cachedArt(dir, artUri, 960)
                     art?.let { keep.add(it) }
                     val app = Apps.BY_PACKAGE[pkg]?.name ?: label(pkg)
                     newLinks[id] = pkg to str(c, 10).ifEmpty { null }
@@ -127,15 +127,15 @@ object WatchNext {
 
     private fun str(c: android.database.Cursor, i: Int) = if (c.isNull(i)) "" else (c.getString(i) ?: "").trim()
 
-    /** The artwork as a JPEG of at most 960 px on disk, fetched once per address. Content URIs only open here, on the TV. */
-    private fun cachedArt(uri: String): String? {
-        val name = Integer.toHexString(uri.hashCode()) + ".jpg"
+    /** The artwork as a JPEG of at most `width` px in `dir`, fetched once per address. Content URIs only open here, on the TV. */
+    fun cachedArt(dir: File, uri: String, width: Int): String? {
+        val name = Integer.toHexString(uri.hashCode()) + "_$width.jpg"
         val f = File(dir, name)
         if (f.isFile) return name
         return try {
             stream(uri)?.use { input ->
                 val b = BitmapFactory.decodeStream(input) ?: return null
-                val s = if (b.width > 960) Bitmap.createScaledBitmap(b, 960, maxOf(1, b.height * 960 / b.width), true) else b
+                val s = if (b.width > width) Bitmap.createScaledBitmap(b, width, maxOf(1, b.height * width / b.width), true) else b
                 val tmp = File(dir, "$name.part")
                 tmp.outputStream().use { s.compress(Bitmap.CompressFormat.JPEG, 84, it) }
                 if (tmp.renameTo(f)) name else null

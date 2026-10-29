@@ -19,9 +19,16 @@ import java.util.Locale
 object Sports {
     private const val FEED = "https://tvprofil.net/xmltv/data/epg_sport_live_tvprofil.net.xml"
     private const val EVERY_MS = 30 * 60_000L
-    private val GENERAL = mapOf("rtl.hr" to "RTL", "rtl2.hr" to "RTL 2", "nova.hr" to "Nova TV")
-    /** The channels whose current show goes in the slider (Settings, Live TV). More can be added here. */
+    /**
+     * Channels with a free daily guide on TvProfil, by the name the home screen shows. Settings, Live TV
+     * picks which go in the slider; RTL and RTL 2 are always read, for F1.
+     */
+    val CHANNELS = linkedMapOf("htv1.hr" to "HRT 1", "htv2.hr" to "HRT 2", "htv3.hr" to "HRT 3", "htv4.hr" to "HRT 4",
+        "rtl.hr" to "RTL", "rtl2.hr" to "RTL 2", "nova.hr" to "Nova TV", "doma-tv.movie" to "Doma TV",
+        "hbo.movie" to "HBO", "cinestar-tv.movie" to "CineStar TV", "scifi.movie" to "SciFi", "cmc.music" to "CMC",
+        "eurosport.sport" to "Eurosport", "sportklub-hr.sport" to "Sport Klub", "tv-arena-sport-1-hr.sport" to "Arena Sport 1")
     val NOW_CHANNELS = listOf("RTL", "Nova TV")
+    @Volatile private var fetched = emptySet<String>()
     // Not worth a place in the slider: shopping, trailers, the end of the day.
     private val FILLER = listOf("tv prodaja", "telestar", "najava", "kraj programa", "reklam", "infokanal")
     const val MAXTV = "hr.telekom.android.maxtvp"
@@ -131,17 +138,19 @@ object Sports {
         if (key.length <= 3) Regex("(^|[^a-z0-9])" + Regex.escape(key) + "([^a-z0-9]|$)").containsMatchIn(title) else title.contains(key)
 
     @Synchronized private fun all(): JSONArray {
-        cache?.let { if (System.currentTimeMillis() - at < EVERY_MS) return it }
+        // A channel picked since the last read needs its guide now, not in half an hour.
+        cache?.let { if (System.currentTimeMillis() - at < EVERY_MS && fetched.containsAll(Prefs.tvNowChannels())) return it }
         return try {
             val list = fetch(FEED)
             // RTL and RTL 2, today and tomorrow (CET days, as the guide names its files).
             val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Europe/Zagreb") }
-            for ((id, name) in GENERAL) for (d in 0..1) runCatching {
+            val want = (Prefs.tvNowChannels() + listOf("RTL", "RTL 2")).toSet()
+            for ((id, name) in CHANNELS) if (name in want) for (d in 0..1) runCatching {
                 val date = day.format(java.util.Date(System.currentTimeMillis() + d * 86_400_000L))
                 val got = fetch("https://tvprofil.net/xmltv/data/$id/${date}_${id}_tvprofil.net.xml")
                 for (i in 0 until got.length()) list.put(got.getJSONObject(i).put("channel", name).put("opens", EON))
             }
-            cache = list; at = System.currentTimeMillis()
+            cache = list; at = System.currentTimeMillis(); fetched = want
             Store.writeJson("sport.json", list)
             list
         } catch (e: Exception) {

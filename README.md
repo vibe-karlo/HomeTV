@@ -45,7 +45,11 @@ playing, and the buttons there open apps, type into the TV and switch it off.
 - **Screensaver** with the aerials, after 5 to 30 minutes.
 - **Live sport and live TV** at the top of the home screen, from the TvProfil guide, with artwork
   from TMDB where it has some. Sport follows the words you choose (out of the box: F1 and
-  NK Osijek).
+  NK Osijek). Settings, Live TV picks the channels: HRT 1 to 4, RTL, RTL 2, Nova TV, Doma TV, HBO,
+  CineStar TV, SciFi, CMC, Eurosport, Sport Klub and Arena Sport 1.
+- **App rows:** the rows your apps put on Android TV's home screen (MAXtv's Sljedeće, EON's picks,
+  Netflix, YouTube) under Continue Watching, with the apps' own pictures, live programmes marked with
+  their times, and Select opening them in the app. Settings, App Rows picks which show.
 - **Remote buttons:** the Philips and Rakuten TV keys on the TV's own remote open any app you
   pick.
 - **Phone remote** paired with a 6 digit code shown on the TV. While something plays it shows the
@@ -85,6 +89,10 @@ the TV listings permission and notification access:
 ```
 TV_IP=<tv-ip> sh scripts/tv-update.sh
 ```
+
+**What an app gives the home screen.** `TV_IP=<tv-ip> sh scripts/tv-check-apps.sh` lists, read only,
+the rows MAXtv and EON (or any app you name) publish, their Watch Next entries, whether they are a
+live TV source, and the links they open.
 
 **Switching off Philips telemetry (optional).** `scripts/debloat.py` switches off the analytics
 uploader, usage logging, the shop demo and the Top Picks promotions on Philips TPM191E sets (the
@@ -132,7 +140,7 @@ sh scripts/privacy-scan.sh <your-denylist-file>
 
 - [couch-tv](https://github.com/Seagey/couch-tv) by Seagey, MIT licence. The original README is in
   [docs/couch-tv-README.md](docs/couch-tv-README.md).
-- Continue Watching from Watch Next, now playing, and the HDMI device names were adapted from
+- Continue Watching from Watch Next, app rows, now playing, and the HDMI device names were adapted from
   [Talkies](https://github.com/rajupp/talkies) by TechPP (MIT), which credits
   [Luma](https://github.com/0xProbabillity/luma-tv) and [Matinee](https://github.com/Jarvis322/matinee)
   (both MIT) for the device names and now playing ideas.

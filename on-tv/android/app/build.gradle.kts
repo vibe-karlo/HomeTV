@@ -10,8 +10,8 @@ android {
         applicationId = "dev.couchtv.ontv"
         minSdk = 28          // Android 9. Wireless debugging pairing needs Android 11+ on the TV.
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.1"
+        versionCode = 5
+        versionName = "2.2"
         // Your TMDB key, from the git-ignored .env.local at the repo root. It stays inside this APK on your TV.
         val env = rootProject.file("../../.env.local").takeIf { it.isFile }?.readLines().orEmpty()
         val tmdb = env.firstOrNull { it.trim().startsWith("TMDB_KEY=") }?.substringAfter("=")?.trim().orEmpty()
