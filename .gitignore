@@ -10,10 +10,6 @@ adbkey.pub
 pair-code*.txt
 token*.txt
 
-# Everything the bridge learns about the people using it
-bridge/data/
-data/
-tv-home/tvs/
 
 # Builds and tools
 *.apk

@@ -29,6 +29,7 @@ class App : Application() {
         // TLS 1.3 for wireless debugging on every Android version (the ADB library asks for it).
         runCatching { Security.insertProviderAt(org.conscrypt.Conscrypt.newProvider(), 1) }
         Store.init(this); Adb.init(this); Tv.init(this); Prefs.init(this); Aerials.init(this); AppArt.init(this); Img.init(this); WatchNext.init(this); AppRows.init(this); Media.init(this); Inputs.init(this); TvGuide.init(this)
+        Store.putStr("ask_key", null)   // Ask is gone: no Anthropic key left behind on the TV
         // Screen off: a minute or two before deep standby. Use it to get tomorrow's pictures ready.
         registerReceiver(object : android.content.BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) {

@@ -13,7 +13,7 @@ PKG=dev.couchtv.ontv
 [ -n "$TV_IP" ] || { echo "Set TV_IP to the TV's address, for example: TV_IP=<tv address> sh scripts/tv-update.sh"; exit 1; }
 [ -f "$APK" ] || { echo "No $APK yet: run sh scripts/build-next.sh first."; exit 1; }
 if [ ! -x "$PY" ]; then
-  python3 -m venv "$ROOT/.venv" && "$PY" -m pip install -q -r "$ROOT/bridge/requirements.txt"
+  python3 -m venv "$ROOT/.venv" && "$PY" -m pip install -q -r "$ROOT/tv-home/tools/requirements.txt"
 fi
 export TV_IP
 tv() { "$PY" "$ADB" shell "$1"; }

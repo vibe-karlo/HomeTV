@@ -1,0 +1,3 @@
+# What tv-home/tools/tvadb.py needs (the ADB helper the scripts use from a computer).
+adb-shell==0.4.4
+rsa==4.9.1

@@ -55,9 +55,6 @@ object Adb {
 
     private val mgr by lazy { Manager(ctx) }
 
-    /** The app's ADB key pair, for the step-by-step diagnostic (AdbDiag). */
-    fun keyPair(): Pair<PrivateKey, java.security.interfaces.RSAPublicKey> = mgr.key to (mgr.cert.publicKey as java.security.interfaces.RSAPublicKey)
-
     fun init(c: Context) { ctx = c.applicationContext }
 
     // Our own flag, never the library's: its isConnected() takes a lock that connect() holds while

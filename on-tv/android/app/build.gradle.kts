@@ -50,20 +50,18 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
 }
 
-// The phone remote and the TV home are built elsewhere in the repo. Copy them in before every build.
-// Order: -PremoteDist=..., then the repo layout (on-tv/ next to remote/), then a staging copy in ../repo.
-val repoRoot = listOf(file("../../.."), file("../../../repo")).firstOrNull { File(it, "remote/dist/index.html").isFile } ?: file("../../..")
-val remoteDist = (project.findProperty("remoteDist") as String?)?.let { file(it) } ?: File(repoRoot, "remote/dist")
-val tvHomeWeb = (project.findProperty("tvHomeWeb") as String?)?.let { file(it) } ?: File(repoRoot, "tv-home/web")
+// The phone remote and the TV home page, staged by scripts/build-next.sh. Copied in before every build.
+val remoteDist = file(project.findProperty("remoteDist") as String? ?: "../../../build/web/remote")
+val tvHomeWeb = file(project.findProperty("tvHomeWeb") as String? ?: "../../../build/web/tv")
 
 val copyWeb by tasks.registering(Copy::class) {
     description = "Copies the phone remote, the TV home page and the on-TV web files into assets."
     into(layout.projectDirectory.dir("src/main/assets/www"))
     from(remoteDist) { into("remote") }
-    from(tvHomeWeb) { into("tv"); exclude("mock.js") }
+    from(tvHomeWeb) { into("tv") }
     from(file("../../web")) { into("ontv") }
     doFirst {
-        if (!File(remoteDist, "index.html").isFile) throw GradleException("No phone remote build at $remoteDist. Run npm run build in remote/ first.")
+        if (!File(remoteDist, "index.html").isFile) throw GradleException("No phone remote at $remoteDist. Build with scripts/build-next.sh.")
         if (!File(tvHomeWeb, "index.html").isFile) throw GradleException("No TV home page at $tvHomeWeb.")
         delete(layout.projectDirectory.dir("src/main/assets/www"))
     }

@@ -57,8 +57,13 @@ playing, and the buttons there open apps, type into the TV and switch it off.
 
 ## Build
 
-You need the JDK and Android SDK in `build/` (see [docs/couch-tv-README.md](docs/couch-tv-README.md)
-for the original build notes), plus a free [TMDB](https://www.themoviedb.org/settings/api) API key.
+You need JDK 21 and the Android SDK (platform 34, build tools 34) in `build/jdk` and `build/sdk`,
+which git ignores, plus a free [TMDB](https://www.themoviedb.org/settings/api) API key. Gradle is not
+needed: `on-tv/android/gradlew` fetches it. For the JDK, unpack the Temurin 21 `.tar.gz` from
+[adoptium.net](https://adoptium.net/temurin/releases/?version=21) into `build/jdk`. For the SDK, unzip
+Google's "Command line tools only" into `build/sdk/cmdline-tools/latest`, then run
+`build/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"` and
+`--licenses`. Other places work too: set `JAVA_HOME` and `ANDROID_HOME`.
 
 1. Put the key in `.env.local` at the repo root. The file is git-ignored.
    ```
@@ -75,8 +80,13 @@ for the original build notes), plus a free [TMDB](https://www.themoviedb.org/set
    adb connect <tv-ip>:5555
    adb install -r dist/couch-tv-next.apk
    ```
-4. To use it as the home screen, follow
-   [Use it as the home screen](on-tv/README.md#use-it-as-the-home-screen-optional).
+4. To use it as the home screen, switch on **Use as home screen** in Couch TV. On a plain Android TV
+   (this Philips) that is enough. On Google TV the system launcher always wins the home button, so
+   it has to be switched off too, from a computer:
+   ```
+   adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx   # undo: pm enable ...
+   ```
+   Check the package name first (`adb shell pm list packages | grep launcher`).
 
 Once HomeTV is connected to the TV's debugging, it grants itself two more things it needs:
 the TV listings permission (for Continue Watching from your apps) and notification access, which
@@ -138,8 +148,8 @@ sh scripts/privacy-scan.sh <your-denylist-file>
 
 ## Credits
 
-- [couch-tv](https://github.com/Seagey/couch-tv) by Seagey, MIT licence. The original README is in
-  [docs/couch-tv-README.md](docs/couch-tv-README.md).
+- [couch-tv](https://github.com/Seagey/couch-tv) by Seagey, MIT licence: HomeTV started as its
+  on-TV mode. The computer bridge, the React remote and the first home page are in its history.
 - Continue Watching from Watch Next, app rows, now playing, and the HDMI device names were adapted from
   [Talkies](https://github.com/rajupp/talkies) by TechPP (MIT), which credits
   [Luma](https://github.com/0xProbabillity/luma-tv) and [Matinee](https://github.com/Jarvis322/matinee)

@@ -40,7 +40,7 @@ json.dump(json.loads(s[s.index('['):s.rindex(']') + 1]), open(sys.argv[2], 'w'),
 " "$ROOT/home-next/aerials.js" "$ROOT/on-tv/android/app/src/main/assets/aerials.json"
 
 [ -f "$ROOT/on-tv/android/local.properties" ] || echo "sdk.dir=$ANDROID_HOME" > "$ROOT/on-tv/android/local.properties"
-"$ROOT/tv-home/android/gradlew" -p "$ROOT/on-tv/android" --no-daemon -q assembleRelease \
+"$ROOT/on-tv/android/gradlew" -p "$ROOT/on-tv/android" --no-daemon -q assembleRelease \
   "-PremoteDist=$B/web/remote" "-PtvHomeWeb=$B/web/tv"
 mkdir -p "$ROOT/dist"
 cp "$ROOT/on-tv/android/app/build/outputs/apk/release/app-release.apk" "$ROOT/dist/couch-tv-next.apk"

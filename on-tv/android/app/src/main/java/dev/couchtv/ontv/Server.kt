@@ -7,10 +7,7 @@ import fi.iki.elonen.NanoWSD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.io.InputStream
 import java.net.URLDecoder
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 
 /**
  * The bridge, running on the TV. Same endpoint shapes as the computer bridge (bridge/API.md) so one
@@ -42,8 +39,6 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             uri == "/setup" || uri == "/setup/" -> asset("www/ontv/setup.html")
             uri.startsWith("/ontv/") -> asset("www/ontv/" + uri.removePrefix("/ontv/"))
             uri == "/tv" -> redirect("/tv/")
-            uri == "/tv/config.js" -> newFixedLengthResponse(Response.Status.OK, "application/javascript",
-                "window.COUCH_CONFIG = " + Store.publicConfig() + ";\n").noCache()
             uri.startsWith("/tv/") -> staticOrIndex("www/tv", uri.removePrefix("/tv/"), inject = false)
             uri.startsWith("/aerials/file/") -> aerial(s, uri.removePrefix("/aerials/file/"))
             // Show artwork, shrunk and kept on the TV (pictures only, so no pairing needed).
@@ -129,14 +124,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         }
         if (!authed(s)) return json(401, err("pair this phone first: open this page on your phone and type the code from the TV"))
 
-        val q = { k: String -> s.parameters[k]?.firstOrNull() }
         return when ("$m $path") {
-            "GET /api/now" -> json(200, Now.payload())
-            "GET /api/events" -> events()
-            "GET /api/tvs" -> json(200, ok().put("default", Store.TV_ID).put("tvs", JSONArray().put(JSONObject().put("id", Store.TV_ID)
-                .put("name", Store.tvName()).put("paired", true).put("connected", true).put("adb", Adb.connected)
-                .put("picture", false).put("power", if (Tv.isOn) "on" else "off"))))
-            "GET /api/config" -> json(200, ok(Store.publicConfig()))
             // The home screen: its rows (Continue Watching first), the aerials on the TV, and this TV's address.
             "GET /api/home-data" -> {
                 val shows = Shows.rows()
@@ -159,7 +147,6 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/app-rows/shown" -> { AppRows.stale(); json(200, ok().put("rows", AppRows.shown())) }
             "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
             "GET /api/tv-guide" -> json(200, ok().put("allowed", TvGuide.allowed()).put("channels", TvGuide.nowNext()))
-            "GET /api/live-channels" -> json(200, ok().put("channels", JSONArray(Sports.CHANNELS.values.toList())))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
             "GET /api/tv-apps" -> {
                 val p = Prefs.json()
@@ -181,57 +168,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 val t = body(s).optString("text").ifEmpty { throw ApiError(400, "text is required") }
                 Tv.text(t); json(200, ok())
             }
-            "GET /api/apps" -> {
-                val inst = Tv.installed()
-                val arr = JSONArray()
-                Apps.ALL.forEach { a -> arr.put(JSONObject().put("id", a.id).put("name", a.name).put("package", a.pkg).put("colour", a.colour)
-                    .put("installed", a.id == "home" || a.pkg in inst)) }
-                json(200, ok().put("apps", arr))
-            }
             "POST /api/launch" -> launch(body(s).optString("app"))
-            "GET /api/find" -> {
-                val title = q("title")?.trim().orEmpty().ifEmpty { throw ApiError(400, "title is required") }
-                val (best, others) = Finder.find(title, q("type"))
-                best ?: throw ApiError(404, "could not find $title")
-                val o = JSONArray(); others.forEach { o.put(JSONObject().put("title", it.title).put("year", it.year ?: JSONObject.NULL).put("type", it.type)) }
-                json(200, ok().put("result", Finder.publicResult(best, Tv.installed())).put("others", o))
-            }
-            "POST /api/play" -> {
-                val b = body(s)
-                val title = b.optString("title").trim().ifEmpty { throw ApiError(400, "title is required") }
-                json(200, ok(Finder.play(title, b.optInt("season").takeIf { it > 0 }, b.optInt("episode").takeIf { it > 0 },
-                    b.optString("service").ifEmpty { null }, b.optString("who").ifEmpty { null })))
-            }
-            "POST /api/ask" -> {
-                if (!Ask.enabled) throw ApiError(501, "Ask is off in on-TV mode. To switch it on, add your own Anthropic API key on the setup page (it costs a fraction of a cent per ask).")
-                val b = body(s)
-                json(200, Ask.ask(b.optString("text").ifEmpty { throw ApiError(400, "text is required") }, b.optString("who").ifEmpty { Now.who }))
-            }
-            "GET /api/recs" -> json(200, ok().put("updated", Now.iso()).put("continue", Now.continueItems(q("who"))).put("picks", JSONArray()))
-            "GET /api/continue" -> json(200, ok().put("items", Now.continueItems(q("who"))))
-            "POST /api/continue/open" -> {
-                val b = body(s)
-                val idx = b.optString("id").removePrefix("h-").toIntOrNull() ?: throw ApiError(400, "id is required")
-                val h = Store.history()
-                if (idx !in 0 until h.length()) throw ApiError(404, "not in keep watching")
-                val it = h.getJSONObject(idx)
-                json(200, ok(Finder.play(it.getString("title"), it.optInt("season").takeIf { s -> s > 0 }, it.optInt("episode").takeIf { s -> s > 0 },
-                    it.optString("service").ifEmpty { null }, b.optString("who").ifEmpty { null }, resume = true)))
-            }
-            "GET /api/history" -> json(200, ok().put("items", Store.history()))
-            "GET /api/who" -> json(200, ok().put("who", Now.who ?: JSONObject.NULL))
-            "POST /api/who" -> { Now.who = body(s).optString("who").ifEmpty { null }; Now.push(); json(200, ok().put("who", Now.who ?: JSONObject.NULL)) }
-            "GET /api/sleep" -> json(200, ok().put("ends", Now.sleepEnds?.let { Now.iso(it) } ?: JSONObject.NULL))
-            "POST /api/sleep" -> {
-                val min = body(s).optDouble("minutes", Double.NaN)
-                if (min.isNaN() || min < 0 || min > 600) throw ApiError(400, "minutes must be 0 to 600")
-                App.setSleep(if (min > 0) System.currentTimeMillis() + (min * 60_000).toLong() else null)
-                json(200, ok().put("ends", Now.sleepEnds?.let { Now.iso(it) } ?: JSONObject.NULL))
-            }
-            "GET /api/picture" -> json(200, ok().put("mode", JSONObject.NULL).put("supported", false).put("can_set", false))
-            "POST /api/picture" -> json(409, err("picture mode is not available in on-TV mode"))
-            "GET /api/screens" -> json(200, ok().put("screens", JSONArray()))
-            "POST /api/screens/open" -> json(404, err("no screens in on-TV mode"))
             "POST /api/power" -> power(body(s).optString("state"))
             "POST /api/volume" -> volume(body(s))
             // The TV's sources (HDMI by device name, AV, Live TV), and switching to one.
@@ -239,21 +176,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "POST /api/inputs/open" -> { Inputs.open(body(s).optString("id")); json(200, ok()) }
             // Play, pause, skip and seek in the app that is playing.
             "POST /api/media" -> { Media.control(body(s).optString("action"), Now.front); json(200, ok()) }
-            "GET /api/screenshot" -> newFixedLengthResponse(Response.Status.OK, "image/png", Tv.screenshot().inputStream(), -1).noStore()
             "GET /api/weather" -> json(200, ok(Weather.get() ?: throw ApiError(503, "No weather right now.")))
-            "POST /api/home-apps" -> {
-                val b = body(s)
-                Store.writeJson("home-apps.json", JSONObject().put("apps", b.optJSONArray("apps") ?: JSONArray()).put("line", b.optInt("line", 10)))
-                json(200, ok())
-            }
-            "GET /api/app-order" -> json(200, appOrder())
-            "POST /api/app-order" -> {
-                val b = body(s)
-                val order = b.optJSONArray("order") ?: throw ApiError(400, "order must be a list of app packages")
-                if (!b.has("line")) throw ApiError(400, "line is required")
-                Store.writeJson("app-order.json", JSONObject().put("order", order).put("line", b.optInt("line").coerceIn(0, 10)))
-                json(200, appOrder())
-            }
             // ---- on-TV extras ----
             "GET /api/adb" -> json(200, ok(JSONObject(Adb.status())))
             "POST /api/adb/connect" -> { val tls = body(s).optString("route") == "tls"; if (tls) Adb.disconnect(); Thread { runCatching { Adb.ensure(interactive = true, preferTls = tls) }.onFailure { Log.w(TAG, "adb connect", it) }; Now.push() }.start(); json(200, ok(JSONObject(Adb.status()))) }
@@ -265,18 +188,6 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 r.put("adb", JSONObject(Adb.status()))
                 json(if (r.optBoolean("ok")) 200 else 502, r)
             }
-            "POST /api/adb/disconnect" -> { Adb.disconnect(); json(200, ok()) }
-            // Step-by-step handshake with every packet logged (tag couchtv.adb, "diag:"). See AdbDiag.
-            "POST /api/adb/diag" -> {
-                val b = body(s)
-                AdbDiag.start(b.optString("host").ifEmpty { "127.0.0.1" }, b.optInt("port", 5555), b.optInt("wait", 90).coerceIn(5, 300))
-                json(200, ok().put("note", "started; read GET /api/adb/diag or logcat -s couchtv.adb"))
-            }
-            "GET /api/adb/diag" -> json(200, ok().put("running", AdbDiag.running).put("lines", JSONArray(AdbDiag.lines)))
-            // The TV home's people list (the same one /setup edits): the home's Home settings adds,
-            // renames, removes and reorders people with it, as it does with the computer bridge.
-            "GET /api/people" -> json(200, ok().put("people", Store.people()))
-            "POST /api/people" -> { savePeople(body(s)); json(200, ok().put("people", Store.people())) }
             "GET /api/settings" -> json(200, settings())
             "POST /api/settings" -> { saveSettings(body(s)); json(200, settings()) }
             "POST /api/phones/forget" -> { Auth.forgetAll(); json(200, ok().put("note", "Every phone must pair again.")) }
@@ -328,48 +239,13 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         return json(200, ok().put("volume", JSONObject(Tv.volume())))
     }
 
-    private fun appOrder(): JSONObject {
-        val known = (Store.readJson("home-apps.json") as? JSONObject) ?: JSONObject()
-        val apps = known.optJSONArray("apps") ?: JSONArray()
-        val saved = Store.readJson("app-order.json") as? JSONObject
-        if (saved == null) return ok().put("apps", apps).put("line", minOf(known.optInt("line", 10), 10, apps.length())).put("saved", false).put("dock_max", 10)
-        val by = (0 until apps.length()).associate { apps.getJSONObject(it).optString("package") to apps.getJSONObject(it) }
-        val order = saved.optJSONArray("order") ?: JSONArray()
-        val listed = JSONArray(); val inOrder = HashSet<String>()
-        for (i in 0 until order.length()) { val p = order.optString(i); inOrder += p; by[p]?.let { listed.put(it) } }
-        val line = (0 until minOf(saved.optInt("line"), order.length())).count { by.containsKey(order.optString(it)) }
-        by.forEach { (p, a) -> if (p !in inOrder) listed.put(a) }
-        return ok().put("apps", listed).put("line", minOf(line, 10)).put("saved", true).put("dock_max", 10)
-    }
-
     private fun settings(): JSONObject = ok()
         // the TV home's own Home settings (language, place, look...), kept here as they come
         .put("settings", Store.readJson("home-settings.json") as? JSONObject ?: JSONObject())
         .put("updated", Store.str("home_settings_updated") ?: JSONObject.NULL)
         .put("people", Store.people()).put("weather", Store.weather()).put("country", Store.country()).put("tv_name", Store.tvName())
-        .put("ask", JSONObject().put("enabled", Store.bool("ask_enabled")).put("has_key", !Store.str("ask_key").isNullOrEmpty()).put("model", Ask.MODEL))
+        
         .put("phones", Auth.phoneCount()).put("port", Store.port).put("adb", JSONObject(Adb.status()))
-
-    /** {"people": [...]} replaces the list; {"order": [ids]} only reorders it. */
-    private fun savePeople(b: JSONObject) {
-        val list = b.optJSONArray("people") ?: run {
-            val order = b.optJSONArray("order") ?: throw ApiError(400, "people (a list) or order (a list of ids) is required")
-            val now = Store.people()
-            val by = (0 until now.length()).associate { now.getJSONObject(it).optString("id") to now.getJSONObject(it) }
-            val out = JSONArray(); val seen = HashSet<String>()
-            for (i in 0 until order.length()) by[order.optString(i)]?.let { if (seen.add(order.optString(i))) out.put(it) }
-            by.forEach { (id, p) -> if (id !in seen) out.put(p) }
-            out
-        }
-        val clean = JSONArray()
-        for (i in 0 until minOf(list.length(), 12)) {
-            val p = list.optJSONObject(i) ?: continue
-            val name = p.optString("name").trim().take(40)
-            if (name.isNotEmpty()) clean.put(JSONObject().put("id", p.optString("id").ifEmpty { "person${i + 1}" }.take(32)).put("name", name))
-        }
-        Store.putStr("people", clean.toString())
-        Now.push()
-    }
 
     private fun saveSettings(b: JSONObject) {
         b.optJSONObject("settings")?.let {
@@ -393,35 +269,6 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         }
         b.optString("country").takeIf { Regex("[A-Z]{2}").matches(it) }?.let { Store.putStr("country", it) }
         b.optString("tv_name").trim().takeIf { it.isNotEmpty() }?.let { Store.putStr("tv_name", it.take(30)) }
-        if (b.has("ask_key")) Store.putStr("ask_key", b.optString("ask_key").trim().ifEmpty { null })
-        if (b.has("ask_enabled")) Store.putBool("ask_enabled", b.optBoolean("ask_enabled"))
-    }
-
-    // ---------------------------------------------------------------- server-sent events
-
-    private fun events(): Response {
-        val q = LinkedBlockingQueue<String>(50)
-        val fn: (String) -> Unit = { q.offer("event: now\ndata: $it\n\n") }
-        q.offer("event: now\ndata: ${Now.payload()}\n\n")
-        Now.listen(fn)
-        val stream = object : InputStream() {
-            private var buf = ByteArray(0); private var pos = 0; private var closed = false
-            override fun read(): Int { val b = ByteArray(1); return if (read(b, 0, 1) < 0) -1 else b[0].toInt() and 0xff }
-            override fun read(b: ByteArray, off: Int, len: Int): Int {
-                if (closed) return -1
-                if (pos >= buf.size) {
-                    val msg = try { q.poll(20, TimeUnit.SECONDS) } catch (e: InterruptedException) { null } ?: ": keepalive\n\n"
-                    buf = msg.toByteArray(); pos = 0
-                }
-                val n = minOf(len, buf.size - pos)
-                System.arraycopy(buf, pos, b, off, n); pos += n
-                return n
-            }
-            override fun close() { closed = true; Now.unlisten(fn) }
-        }
-        return newChunkedResponse(Response.Status.OK, "text/event-stream", stream).apply {
-            addHeader("Cache-Control", "no-cache"); addHeader("X-Accel-Buffering", "no")
-        }
     }
 
     // ---------------------------------------------------------------- WebSocket (/api/ws)

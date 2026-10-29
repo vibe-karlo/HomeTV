@@ -77,7 +77,7 @@ echo "== 2. generic checks (private addresses, emails, phones, paths)"
 for rule in "${RULES[@]}"; do
   name="${rule%%|*}"; re="${rule#*|}"
   # package-lock.json is machine written: only check it for the rules that cannot match a hash.
-  hits=$(grep -rInE "${EXCL[@]}" --exclude=privacy-scan.sh "$re" . 2> /dev/null | grep -vE "$ALLOW" | grep -vE '^\./remote/package-lock\.json:[0-9]+:.*(integrity|resolved)' | cut -d: -f1,2)
+  hits=$(grep -rInE "${EXCL[@]}" --exclude=privacy-scan.sh "$re" . 2> /dev/null | grep -vE "$ALLOW" | cut -d: -f1,2)
   if [ -n "$hits" ]; then
     while IFS= read -r h; do note "$name  $h"; done <<< "$hits"
   fi
@@ -85,7 +85,7 @@ done
 if [ "$HAS_GIT" = 1 ]; then
   # Every added or removed line in every commit, tagged with its commit and file, so a value that
   # was committed once and deleted later is still caught.
-  git log --all -p --no-color --no-ext-diff --format='@@commit %h' -- . ':!scripts/privacy-scan.sh' ':!remote/package-lock.json' 2> /dev/null |
+  git log --all -p --no-color --no-ext-diff --format='@@commit %h' -- . ':!scripts/privacy-scan.sh' 2> /dev/null |
     awk '/^@@commit /{c=$2; next} /^\+\+\+ b\//{f=substr($0,7); next} /^[+-]/ && !/^(\+\+\+|---) /{print c " " f ": " substr($0,2)}' > "$TMP/history.txt"
   for rule in "${RULES[@]}"; do
     name="${rule%%|*}"; re="${rule#*|}"

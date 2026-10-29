@@ -68,16 +68,6 @@
   </section>
 
   <section class="card">
-    <h2>Ask (optional, off by default)</h2>
-    <p>On-TV mode has no Claude unless you add your own Anthropic API key. Each ask uses Claude Haiku 5.5 and costs about a fifth of a US cent. Use a key made only for this TV, with a monthly spend limit set in the Anthropic Console: the key is stored on the TV, and anyone with ADB access to the TV could read it.</p>
-    <label for="ask-key">Anthropic API key (leave empty to keep the current one)</label><input id="ask-key" type="password" autocomplete="off">
-    <label class="check"><input type="checkbox" id="ask-on"> Switch ask on</label>
-    <p id="ask-state"></p>
-    <div class="row"><button class="go" id="ask-save">Save ask</button><button id="ask-clear">Remove key</button></div>
-    <div class="msg" id="ask-msg" role="status"></div>
-  </section>
-
-  <section class="card">
     <h2>Phones</h2>
     <p id="phones"></p>
     <button id="forget">Forget every phone</button>
@@ -102,8 +92,6 @@
       $('place').value = j.weather.place || ''; $('country').value = j.country || '';
       saved = j.weather; saved.country = j.country || '';
       $('found').textContent = j.weather.place ? 'Weather for ' + j.weather.place + ' (' + j.weather.lat.toFixed(2) + ', ' + j.weather.lon.toFixed(2) + ', ' + (j.weather.timezone || 'UTC') + ').' : 'No weather place yet.';
-      $('ask-on').checked = !!j.ask.enabled;
-      $('ask-state').textContent = j.ask.has_key ? 'A key is saved. Model: ' + j.ask.model + '.' : 'No key saved.';
       $('phones').textContent = j.phones + (j.phones === 1 ? ' phone is' : ' phones are') + ' paired with this TV.';
       showAdb(j.adb);
       // Android 13+ (most Google TVs): pairing first, 5555 second. Older TVs: the other way round.
@@ -156,14 +144,6 @@
       }
       return api('POST', '/api/settings', body);
     }).then(function () { $('save-msg').textContent = 'Saved.'; load(); }).catch(function (e) { $('save-msg').textContent = e.message; });
-  };
-  $('ask-save').onclick = function () {
-    var body = { ask_enabled: $('ask-on').checked };
-    if ($('ask-key').value.trim()) body.ask_key = $('ask-key').value.trim();
-    api('POST', '/api/settings', body).then(function () { $('ask-key').value = ''; $('ask-msg').textContent = 'Saved.'; load(); }).catch(function (e) { $('ask-msg').textContent = e.message; });
-  };
-  $('ask-clear').onclick = function () {
-    api('POST', '/api/settings', { ask_key: '', ask_enabled: false }).then(function () { $('ask-msg').textContent = 'Key removed.'; load(); });
   };
   $('forget').onclick = function () {
     if (!confirm('Every phone, including this one, will need the code from the TV again.')) return;

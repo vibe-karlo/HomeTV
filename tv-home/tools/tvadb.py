@@ -49,7 +49,7 @@ def connect():
         from adb_shell.adb_device import AdbDeviceTcp
         from adb_shell.auth.sign_pythonrsa import PythonRSASigner
     except ImportError:
-        fail("needs adb-shell: .venv/bin/pip install -r bridge/requirements.txt")
+        fail("needs adb-shell: .venv/bin/pip install -r tv-home/tools/requirements.txt")
     ip = os.environ.get("TV_IP") or fail("set TV_IP to the address of the TV")
     try:
         port = int(os.environ.get("ADB_PORT") or 5555)
