@@ -264,11 +264,13 @@ object Adb {
         val found = AtomicInteger(-1)
         val latch = CountDownLatch(1)
         val mdns = AdbMdns(ctx, type) { _: InetAddress?, port: Int -> if (port > 0) { found.set(port); latch.countDown() } }
+        // Wi-Fi drops multicast to save power: let it through only while looking, not all day.
+        val lock = runCatching { ctx.getSystemService(android.net.wifi.WifiManager::class.java).createMulticastLock("couchtv-mdns").apply { setReferenceCounted(false); acquire() } }.getOrNull()
         return try {
             mdns.start()
             latch.await(ms, TimeUnit.MILLISECONDS)
             found.get().takeIf { it > 0 }
-        } catch (e: Exception) { null } finally { runCatching { mdns.stop() } }
+        } catch (e: Exception) { null } finally { runCatching { mdns.stop() }; runCatching { lock?.release() } }
     }
 
     private fun portOpen(port: Int, host: String = "127.0.0.1") = try {

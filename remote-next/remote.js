@@ -26,12 +26,16 @@
       '<text x="14.4" y="15.4" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="600" fill="currentColor" stroke="none">10</text>'),
     fwd: S('<path d="M20.4 8.6A9.5 9.5 0 1 0 23.4 15"/><path d="M20.1 3.9l.3 4.7-4.6.4"/>' +
       '<text x="13.6" y="15.4" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="600" fill="currentColor" stroke="none">10</text>'),
+    // Ambilight: the screen with its light spilling out on three sides.
+    ambilight: S('<rect x="8" y="9" width="12" height="9" rx="1.6"/><path d="M14 4.5v1.8M8.6 5.8l.9 1.5M19.4 5.8l-.9 1.5M3.8 13.5h2M22.2 13.5h2M4.4 9.2l1.7.9M23.6 9.2l-1.7.9M11 22h6"/>'),
+    check: S('<path d="m7 14.5 4.5 4.5L21 9.5"/>'),
     apps: S('<rect x="4.5" y="4.5" width="8" height="8" rx="2"/><rect x="15.5" y="4.5" width="8" height="8" rx="2"/><rect x="4.5" y="15.5" width="8" height="8" rx="2"/><rect x="15.5" y="15.5" width="8" height="8" rx="2"/>')
   };
   document.querySelectorAll("#keys button").forEach(function (b) { b.innerHTML = ICON[b.dataset.key || b.dataset.vol]; });
   $("power").innerHTML = ICON.power;
   $("kbd-open").innerHTML = ICON.keyboard;
   $("apps-open").innerHTML = ICON.apps;
+  $("amb-open").innerHTML = ICON.ambilight;
 
   // ---------------------------------------------------------------- haptics (iPhone: the hidden switch trick)
 
@@ -114,25 +118,36 @@
     if (!n.keyboard && state.keyboard && kbd.auto) closeKbd();
     state.keyboard = !!n.keyboard;
   }
+  // Reconnects quickly first (a blip on the Wi-Fi), then backs off to 3 s while the TV is away.
+  var retry = 0, retryT = null, heard = 0;
   function listen() {
     if (MOCK) { onNow(mockNow); return; }
-    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/ws?token=" + encodeURIComponent(token || ""));
-    ws.onopen = function () { wsOpen = true; inFlight = 0; };
-    ws.onmessage = function (e) {
+    clearTimeout(retryT);
+    if (ws && ws.readyState <= 1) return;
+    var s = ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/ws?token=" + encodeURIComponent(token || ""));
+    s.onopen = function () { wsOpen = true; inFlight = 0; retry = 0; heard = Date.now(); };
+    s.onmessage = function (e) {
+      heard = Date.now();
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
       if (m.event === "now") { onNow(m); return; }
       inFlight = Math.max(0, inFlight - 1);
       if (m.ok === false && m.error) toast(m.error);
     };
-    ws.onclose = function () {
+    s.onclose = function () {
+      if (s !== ws) return;
       wsOpen = false; $("now-what").textContent = "Reconnecting";
-      setTimeout(listen, 1500);
+      retryT = setTimeout(listen, [150, 400, 1000][retry++] || 3000);
     };
   }
-  // Back from the background (phone locked, app switched): reconnect at once.
+  function reconnect() { if (ws) { var old = ws; ws = null; wsOpen = false; try { old.close(); } catch (e) {} } listen(); }
+  // A press the TV has not answered in 1.5 s means the connection died quietly (the phone's Wi-Fi
+  // slept, the TV restarted): start a new one instead of waiting for the browser to notice.
+  setInterval(function () { if (wsOpen && inFlight > 0 && Date.now() - inFlightAt > 1500 && Date.now() - heard > 1500) reconnect(); }, 500);
+  // Back from the background (phone locked, app switched) or back on the network: reconnect at once.
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && !MOCK && token && (!ws || ws.readyState > 1)) listen();
+    if (!document.hidden && !MOCK && token) { if (!ws || ws.readyState > 1) listen(); else if (Date.now() - heard > 8000) reconnect(); }
   });
+  addEventListener("online", function () { if (!MOCK && token) reconnect(); });
 
   // ---------------------------------------------------------------- now playing (the app's media session)
 
@@ -343,6 +358,84 @@
   $("apps-open").addEventListener("click", function () { tick(); openApps(); });
   $("apps-done").addEventListener("click", function () { tick(); closeApps(); });
   appsEl.addEventListener("click", function (e) { if (e.target === appsEl) closeApps(); });
+
+  // ---------------------------------------------------------------- Ambilight (the TV's own Philips API)
+
+  var ambEl = $("amb"), amb = null;
+  var SWATCH = { "lounge-hot-lava": "#e0582e", "lounge-deep-water": "#2f6fd6", "lounge-fresh-nature": "#45a35c", "lounge-warm-white": "#f1d6a2" };
+  var mockAmb = { paired: true, on: true, style: "lounge-deep-water", brightness: 5, styles: [
+    { id: "video-standard", name: "Standard", group: "Follow video" }, { id: "video-natural", name: "Natural", group: "Follow video" },
+    { id: "video-vivid", name: "Vivid", group: "Follow video" }, { id: "video-game", name: "Game", group: "Follow video" },
+    { id: "audio-lumina", name: "Lumina", group: "Follow music" }, { id: "lounge-hot-lava", name: "Hot Lava", group: "Lounge light" },
+    { id: "lounge-deep-water", name: "Deep Water", group: "Lounge light" }, { id: "lounge-fresh-nature", name: "Fresh Nature", group: "Lounge light" },
+    { id: "lounge-warm-white", name: "Warm White", group: "Lounge light" }] };
+  function ambCall(method, path, body) {
+    if (!MOCK) return call(method, path, body);
+    if (path === "/api/ambilight" && method === "POST") Object.assign(mockAmb, body);
+    if (path === "/api/philips/pair") mockAmb.paired = true;
+    return Promise.resolve(Object.assign({ ok: true }, mockAmb));
+  }
+  function drawAmb() {
+    var body = $("amb-body"); body.innerHTML = "";
+    ambEl.classList.toggle("off", !!amb && amb.paired && !amb.on);
+    if (!amb) { body.innerHTML = '<p class="amb-note">Asking the TV…</p>'; return; }
+    if (!amb.paired) {
+      body.innerHTML = '<p class="amb-note">HomeTV needs the TV\u2019s permission once. The TV shows a 4-digit PIN for a minute.</p>' +
+        '<input id="amb-pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="PIN" hidden><button class="amb-go" id="amb-pair">Show the PIN on the TV</button>';
+      var asked = false;
+      $("amb-pair").addEventListener("click", function () {
+        tick();
+        if (!asked) {
+          ambCall("POST", "/api/philips/pair/start").then(function () {
+            asked = true; $("amb-pin").hidden = false; $("amb-pin").focus(); $("amb-pair").textContent = "Pair";
+          }, function (e) { toast(e.message); });
+          return;
+        }
+        ambCall("POST", "/api/philips/pair", { pin: $("amb-pin").value }).then(function (d) { amb = d; drawAmb(); }, function (e) { toast(e.message); });
+      });
+      return;
+    }
+    var pw = document.createElement("button"); pw.id = "amb-power"; pw.className = amb.on ? "on" : "";
+    pw.innerHTML = "Light around the TV<span>" + (amb.on ? "On" : "Off") + "</span>";
+    pw.addEventListener("click", function () { tick(); setAmb({ on: !amb.on }); });
+    body.appendChild(pw);
+    var lab = document.createElement("div"); lab.className = "amb-label";
+    lab.innerHTML = "<span>Brightness</span><span>" + (amb.brightness == null ? "" : amb.brightness) + "</span>";
+    body.appendChild(lab);
+    var lv = document.createElement("div"); lv.id = "amb-level";
+    for (var n = 0; n <= 10; n++) (function (n) {
+      var b = document.createElement("button"); b.setAttribute("aria-label", "Brightness " + n);
+      b.innerHTML = "<i></i>"; b.querySelector("i").style.height = (n === 0 ? 8 : 10 + n * 4.4) + "px";
+      if (amb.brightness != null && n <= amb.brightness) b.classList.add("lit");
+      b.addEventListener("click", function () { tick(); setAmb({ brightness: n }); });
+      lv.appendChild(b);
+    })(n);
+    body.appendChild(lv);
+    var group = "";
+    amb.styles.forEach(function (st) {
+      if (st.group !== group) { group = st.group; var h = document.createElement("div"); h.className = "amb-label"; h.textContent = group; body.appendChild(h); }
+      var b = document.createElement("button"); b.className = "amb-style" + (amb.style === st.id ? " on" : "");
+      b.innerHTML = '<i class="dot"></i><b></b>' + ICON.check;
+      b.querySelector(".dot").style.background = SWATCH[st.id] || "transparent";
+      b.querySelector("b").textContent = st.name;
+      b.addEventListener("click", function () { tick(); setAmb(amb.on ? { style: st.id } : { on: true, style: st.id }); });
+      body.appendChild(b);
+    });
+  }
+  // Shows the change at once, then what the TV says it did.
+  function setAmb(change) {
+    var before = amb; amb = Object.assign({}, amb, change); drawAmb();
+    ambCall("POST", "/api/ambilight", change).then(function (d) { amb = d; drawAmb(); }, function (e) { amb = before; drawAmb(); toast(e.message); });
+  }
+  function openAmb() {
+    ambEl.classList.add("open"); ambEl.setAttribute("aria-hidden", "false");
+    drawAmb();
+    ambCall("GET", "/api/ambilight").then(function (d) { amb = d; drawAmb(); }, function (e) { toast(e.message); });
+  }
+  function closeAmb() { ambEl.classList.remove("open"); ambEl.setAttribute("aria-hidden", "true"); }
+  $("amb-open").addEventListener("click", function () { tick(); openAmb(); });
+  $("amb-done").addEventListener("click", function () { tick(); closeAmb(); });
+  ambEl.addEventListener("click", function (e) { if (e.target === ambEl) closeAmb(); });
 
   // iPhone: with the keyboard up, Safari can scroll the page under fixed elements. Keep the typing
   // sheet on the part of the screen that is actually visible.

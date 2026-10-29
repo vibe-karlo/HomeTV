@@ -24,9 +24,23 @@
         return { rows: [], aerials: [] };   // the dock still works with no shows
       });
   }
-  window.HOME_READY = load(4).then(function (d) {
-    window.HOME_DATA = { apps: apps, rows: (d.rows || []).filter(function (r) { return r.items && r.items.length; }),
+  function shape(d) {
+    return { apps: apps, rows: (d.rows || []).filter(function (r) { return r.items && r.items.length; }),
       address: d.address, port: d.port, version: d.version, sport: d.sport || [], tvnow: d.tvnow || [] };
-    window.AERIALS = d.aerials || [];
+  }
+  // The home screen as it was last time, kept in the page's own storage: drawn at once, then the fresh
+  // data (a second or more away on a cold start) replaces it through window.HOME_FRESH.
+  var last = null;
+  try { last = JSON.parse(localStorage.getItem("couch:home") || "null"); } catch (e) {}
+  var fresh = load(4).then(function (d) {
+    if (d.rows && d.rows.length) try { localStorage.setItem("couch:home", JSON.stringify(d)); } catch (e) {}
+    return d;
   });
+  if (last && last.rows) {
+    window.HOME_DATA = shape(last); window.AERIALS = last.aerials || [];
+    window.HOME_READY = Promise.resolve();
+    fresh.then(function (d) { if (d.rows && d.rows.length && window.HOME_FRESH) window.HOME_FRESH(shape(d), d.aerials || []); });
+  } else {
+    window.HOME_READY = fresh.then(function (d) { window.HOME_DATA = shape(d); window.AERIALS = d.aerials || []; });
+  }
 })();

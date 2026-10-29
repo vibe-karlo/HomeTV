@@ -172,11 +172,13 @@ window.HOME_READY.then(function () {
     }
     heroItem = item;
     var token = ++heroToken;
-    var bg = art(item.bg, 1280), logo = art(item.logo, 640);
+    // The card's own 480 px picture is already loaded: show it at once, then the 1280 px one over it.
+    var big = art(item.bg, 1280), bg = TV && item.bg && item.bg.charAt(0) !== "/" ? art(item.bg, 480) : big, logo = art(item.logo, 640);
     Promise.all([bg ? load(bg) : Promise.resolve(null), logo ? load(logo).catch(function () { return null; }) : null]).then(function (r) {
       if (token !== heroToken) return;
       var next = heroLayers[1 - heroCur];
       next.style.backgroundImage = r[0] ? "url(" + bg + ")" : "none";   // no picture: the dark title card
+      if (r[0] && big !== bg) load(big).then(function () { if (token === heroToken) next.style.backgroundImage = "url(" + big + ")"; }, function () {});
       next.classList.remove("drift"); void next.offsetWidth; next.classList.add("drift");
       next.classList.add("on"); heroLayers[heroCur].classList.remove("on"); heroCur = 1 - heroCur;
       if (r[0]) paintFrost(r[0]);
@@ -701,6 +703,18 @@ window.HOME_READY.then(function () {
       refreshWeather();
     }
   };
+  // The fresh data after a start from the kept copy: swap it in, keeping the row in focus.
+  window.HOME_FRESH = function (d) {
+    DATA.sport = d.sport; DATA.tvnow = d.tvnow; DATA.address = d.address; DATA.port = d.port; DATA.version = d.version;
+    if (JSON.stringify(DATA.rows) === JSON.stringify(d.rows)) return;
+    DATA.rows = d.rows;
+    var keep = st.zone === "rows" && rows[st.row] ? rows[st.row].id : null;
+    buildRows();
+    if (keep && st.zone === "rows") { for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) st.row = i; }
+    if (st.zone === "rows" && !rows.length) st.zone = "dock";
+    render();
+  };
+
   // Back from an app: what it says you are in the middle of has probably changed.
   function refreshContinue() {
     if (!TV) return;
@@ -719,7 +733,8 @@ window.HOME_READY.then(function () {
     }, function () {});
   }
 
-  addEventListener("visibilitychange", function () { if (document.hidden) { clearInterval(rotateTimer); aerialActive(false); } });
+  // Behind another app: stop the slider and forget the decoded pictures (megabytes each on this 2 GB TV).
+  addEventListener("visibilitychange", function () { if (document.hidden) { clearInterval(rotateTimer); aerialActive(false); cache = {}; cacheOrder = []; } });
 
   $("#top-gear").insertAdjacentHTML("beforeend", GEAR.replace('stroke="#f6f3ee"', 'stroke="currentColor"'));
   $("#top-gear").addEventListener("click", function () { st.zone = "top"; render(); activate(); });

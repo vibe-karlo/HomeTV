@@ -152,6 +152,50 @@ svg { display: block; }
 .input.off b, .input.off span { color: var(--ink-3); }
 .input:active b { opacity: 0.7; }
 
+/* ---------------------------------------------------------------- Ambilight sheet (the apps sheet's shape) */
+
+.sheet {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end;
+  background: rgba(0, 0, 0, 0); pointer-events: none; transition: background-color 280ms var(--ease);
+}
+.sheet.open { background: rgba(0, 0, 0, 0.45); pointer-events: auto; }
+.sheet-in {
+  width: 100%; max-width: 520px; margin: 0 auto; max-height: 86dvh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 18px var(--pad-x) calc(env(safe-area-inset-bottom) + 18px);
+  background: var(--surface); border-radius: 26px 26px 0 0; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateY(110%); transition: transform 320ms var(--ease);
+}
+.sheet.open .sheet-in { transform: none; }
+.sheet-top { display: flex; align-items: center; justify-content: space-between; min-height: 36px; margin-bottom: 10px; font-size: 17px; font-weight: 600; }
+.sheet-done { font-size: 17px; font-weight: 600; padding: 8px 4px; color: var(--ink-2); }
+
+/* On or off: the whole row is the switch, its words say which. */
+#amb-power { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 56px; padding: 0 16px;
+  border-radius: 16px; background: var(--surface-hi); box-shadow: var(--edge); font-size: 16px; font-weight: 600; }
+#amb-power span { color: var(--ink-2); font-weight: 500; }
+#amb-power.on span { color: var(--ink); }
+/* Brightness as a light meter: ten bars rising left to right, lit up to the level. Tap one to set it. */
+.amb-label { margin: 22px 4px 10px; font-size: 14px; font-weight: 600; color: var(--ink-2); display: flex; justify-content: space-between; }
+#amb-level { display: grid; grid-template-columns: repeat(11, 1fr); align-items: end; gap: 6px; height: 54px; padding: 0 2px; }
+#amb-level button { height: 100%; display: flex; align-items: flex-end; }
+#amb-level i { display: block; width: 100%; border-radius: 4px; background: var(--surface-hi); transition: background-color 160ms var(--ease); }
+#amb-level button.lit i { background: var(--ink); }
+#amb-level button:first-child i { background: none; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+#amb-level button:first-child.lit i { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.amb-style { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 0 4px; text-align: left; }
+.amb-style .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.amb-style b { flex: 1; font-size: 16px; font-weight: 600; color: var(--ink-2); }
+.amb-style.on b { color: var(--ink); }
+.amb-style svg { width: 20px; height: 20px; opacity: 0; }
+.amb-style.on svg { opacity: 1; }
+.amb-style:active b { opacity: 0.7; }
+#amb.off .amb-style, #amb.off #amb-level { opacity: 0.35; }
+.amb-note { margin: 4px 4px 14px; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
+.amb-go { width: 100%; min-height: 52px; border-radius: 16px; background: var(--ink); color: var(--floor); font-size: 16px; font-weight: 600; }
+.amb-go:active { opacity: 0.85; }
+#amb-pin { width: 100%; min-height: 56px; margin-bottom: 12px; border: 0; border-radius: 16px; background: var(--surface-hi); color: var(--ink);
+  font: 600 26px/1 "Switzer", system-ui, sans-serif; letter-spacing: 0.4em; text-align: center; outline: none; box-shadow: var(--edge); }
+
 /* ---------------------------------------------------------------- pairing */
 
 #pair {

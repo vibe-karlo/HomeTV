@@ -26,7 +26,8 @@ object Now {
     private val loop = Executors.newSingleThreadScheduledExecutor()
     private var started = false
 
-    fun listen(fn: (String) -> Unit) = listeners.add(fn)
+    /** A phone joined: read the TV at once, so it does not wait up to 4 s for the first real state. */
+    fun listen(fn: (String) -> Unit): Boolean { val added = listeners.add(fn); if (added && started) loop.execute { tick() }; return added }
     fun unlisten(fn: (String) -> Unit) = listeners.remove(fn)
 
     fun iso(t: Long = System.currentTimeMillis()): String =
@@ -61,26 +62,11 @@ object Now {
         listeners.forEach { runCatching { it(msg) } }
     }
 
-    /** Every 4 s: front app, power, volume. Every 8 s while an app is in front: what it says is playing. */
+    /** Every 4 s, while a phone listens: front app, power, volume and what is playing. */
     @Synchronized fun start() {
         if (started) return
         started = true
-        var tick = 0
-        loop.scheduleWithFixedDelay({
-            try {
-                tick++
-                if (!Adb.connected && (Adb.everAllowed || Adb.paired) && tick % 15 == 1) runCatching { Adb.ensure() }
-                front = Tv.frontPackage()
-                // The media session is a cheap call and is read every time; without notification access
-                // it is a heavy dumpsys, so only every other time and only while a phone is there to show it.
-                if (Media.allowed()) media = if (listeners.isEmpty()) null else runCatching { Media.playing(front) }.getOrNull()?.put("updated", iso())
-                else if (tick % 2 == 0) media = if (listeners.isEmpty()) null else readMedia()
-                val v = Tv.volume()
-                val sig = listOf(front, Tv.isOn, v["level"], v["muted"], media?.optString("title"), media?.optString("subtitle"), media?.optString("state"), media?.opt("duration_ms"),
-                    sleepEnds, who, Adb.connected).joinToString("|")
-                if (sig != lastSig) { lastSig = sig; push() }
-            } catch (e: Exception) { android.util.Log.w("couchtv", "now loop: ${e.message}") }
-        }, 1, 4, TimeUnit.SECONDS)
+        loop.scheduleWithFixedDelay({ tick() }, 1, 4, TimeUnit.SECONDS)
         // Only while a phone listens: one quick read of the input method each second.
         kbdLoop.scheduleWithFixedDelay({
             try {
@@ -93,6 +79,28 @@ object Now {
                 if (shown != keyboard) { keyboard = shown; push() }
             } catch (e: Exception) { }
         }, 2, 2, TimeUnit.SECONDS)
+    }
+
+    private var ticks = 0
+    /**
+     * Front app, power, volume and what is playing. With no phone listening there is nothing to show
+     * them to, so only the ADB connection is looked after (no process reads every 4 s while you watch).
+     */
+    @Synchronized private fun tick() {
+        try {
+            ticks++
+            if (!Adb.connected && (Adb.everAllowed || Adb.paired) && ticks % 15 == 1) runCatching { Adb.ensure() }
+            if (listeners.isEmpty()) { media = null; return }
+            front = Tv.frontPackage()
+            // The media session is a cheap call and is read every time; without notification access
+            // it is a heavy dumpsys, so only every other time and only while a phone is there to show it.
+            if (Media.allowed()) media = if (listeners.isEmpty()) null else runCatching { Media.playing(front) }.getOrNull()?.put("updated", iso())
+            else if (ticks % 2 == 0) media = if (listeners.isEmpty()) null else readMedia()
+            val v = Tv.volume()
+            val sig = listOf(front, Tv.isOn, v["level"], v["muted"], media?.optString("title"), media?.optString("subtitle"), media?.optString("state"), media?.opt("duration_ms"),
+                sleepEnds, who, Adb.connected).joinToString("|")
+            if (sig != lastSig) { lastSig = sig; push() }
+        } catch (e: Exception) { android.util.Log.w("couchtv", "now loop: ${e.message}") }
     }
 
     private fun readMedia(): JSONObject? {

@@ -22,8 +22,10 @@ android {
     buildFeatures { buildConfig = true }
     buildTypes {
         release {
-            // Not minified: libadb, Conscrypt and BouncyCastle use reflection, and the size saving is small.
-            isMinifyEnabled = false
+            // Shrunk, not renamed: libadb, Conscrypt and the reflective parts of BouncyCastle are kept whole
+            // (proguard-rules.pro); the rest of BouncyCastle, unused here, goes.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signed with the local debug key so it installs without a keystore. Use your own key to publish.
             signingConfig = signingConfigs.getByName("debug")
         }

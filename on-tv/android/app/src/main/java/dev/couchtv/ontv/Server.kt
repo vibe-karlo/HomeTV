@@ -146,6 +146,11 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/app-rows" -> json(200, ok().put("rows", AppRows.choices()).put("allowed", WatchNext.allowed()))
             "GET /api/app-rows/shown" -> { AppRows.stale(); json(200, ok().put("rows", AppRows.shown())) }
             "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
+            // Ambilight, through the TV's own Philips API (paired once with a PIN the TV shows).
+            "GET /api/ambilight" -> json(200, ok(Philips.ambilight()))
+            "POST /api/ambilight" -> json(200, ok(Philips.setAmbilight(body(s))))
+            "POST /api/philips/pair/start" -> { Philips.pairStart(); json(200, ok().put("note", "The TV shows a PIN for 60 seconds.")) }
+            "POST /api/philips/pair" -> { Philips.pairFinish(body(s).optString("pin").filter { it.isDigit() }); json(200, ok(Philips.ambilight())) }
             "GET /api/tv-guide" -> json(200, ok().put("allowed", TvGuide.allowed()).put("channels", TvGuide.nowNext()))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
             "GET /api/tv-apps" -> {
@@ -277,12 +282,19 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
      * Low-latency channel. Sends {"event":"now", ...} on every change. Takes
      * {"key":"up"}, {"key":"ok","hold":true}, {"volume":"up"}, {"text":"bluey"} or {"media":"next"}; answers {"ok":true} or an error.
      */
+    // The server drops a connection that sends nothing for SOCKET_READ_TIMEOUT (5 s). A ping every 3 s
+    // gets a pong back from the phone, so an idle remote stays connected instead of reconnecting.
+    private val sockets = java.util.concurrent.CopyOnWriteArraySet<Socket>()
+    private val pinger = java.util.concurrent.Executors.newSingleThreadScheduledExecutor().apply {
+        scheduleWithFixedDelay({ sockets.forEach { s -> runCatching { s.ping(PING) }.onFailure { sockets.remove(s) } } }, 3, 3, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
         private val fn: (String) -> Unit = { runCatching { send(JSONObject(it).put("event", "now").toString()) } }
-        override fun onOpen() { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } }
-        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn) }
+        override fun onOpen() { sockets.add(this); Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } }
+        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { sockets.remove(this); Now.unlisten(fn) }
         override fun onPong(pong: NanoWSD.WebSocketFrame?) {}
-        override fun onException(e: IOException?) { Now.unlisten(fn) }
+        override fun onException(e: IOException?) { sockets.remove(this); Now.unlisten(fn) }
         override fun onMessage(frame: NanoWSD.WebSocketFrame) {
             val reply = try {
                 val m = JSONObject(frame.textPayload)
@@ -390,5 +402,5 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             409 -> "Conflict"; 413 -> "Payload Too Large"; 501 -> "Not Implemented"; 502 -> "Bad Gateway"; 503 -> "Service Unavailable"; 504 -> "Gateway Timeout"; else -> "Status" }
     }
 
-    companion object { private const val TAG = "couchtv.server" }
+    companion object { private const val TAG = "couchtv.server"; private val PING = byteArrayOf(1) }
 }

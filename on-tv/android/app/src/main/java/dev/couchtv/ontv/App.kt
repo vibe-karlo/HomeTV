@@ -122,7 +122,6 @@ class App : Application() {
 class BridgeService : Service() {
     private var server: Server? = null
     private var wifiLock: WifiManager.WifiLock? = null
-    private var multicast: WifiManager.MulticastLock? = null
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -141,7 +140,6 @@ class BridgeService : Service() {
         }
         val wm = applicationContext.getSystemService(WifiManager::class.java)
         wifiLock = runCatching { wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "couchtv").apply { acquire() } }.getOrNull()
-        multicast = runCatching { wm.createMulticastLock("couchtv-mdns").apply { setReferenceCounted(false); acquire() } }.getOrNull()
         startServer()
         Now.start()
         Thread {
@@ -163,7 +161,7 @@ class BridgeService : Service() {
 
     override fun onDestroy() {
         server?.stop(); server = null
-        runCatching { wifiLock?.release() }; runCatching { multicast?.release() }
+        runCatching { wifiLock?.release() }
         super.onDestroy()
     }
 }
