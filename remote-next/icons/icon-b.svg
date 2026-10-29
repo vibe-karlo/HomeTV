@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- the two halves of the tile: the top a step lighter than the bottom -->
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2724"/><stop offset="1" stop-color="#211f1c"/>
+    </linearGradient>
+    <linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141311"/><stop offset="1" stop-color="#0d0c0b"/>
+    </linearGradient>
+    <!-- raised keys: lit from above, darker toward the floor -->
+    <linearGradient id="key" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#2e2b28"/><stop offset="1" stop-color="#191816"/>
+    </linearGradient>
+    <linearGradient id="rocker" x1="0" y1="0" x2="0.45" y2="1">
+      <stop offset="0" stop-color="#1f1d1a"/><stop offset="0.55" stop-color="#262421"/><stop offset="1" stop-color="#3a3733"/>
+    </linearGradient>
+    <linearGradient id="lip" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbf8f3"/><stop offset="1" stop-color="#cfc9bf"/>
+    </linearGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f3ee"/><stop offset="1" stop-color="#cdc7bd"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="512" fill="url(#top)"/>
+  <rect y="512" width="1024" height="512" fill="url(#bottom)"/>
+
+  <!-- TV: a dark key in a bright ring, the letters drawn as strokes like the other glyphs -->
+  <circle cx="360" cy="317" r="112" fill="#1d1b19"/>
+  <circle cx="360" cy="317" r="112" fill="none" stroke="url(#ring)" stroke-width="15"/>
+  <path d="M303 287 h44 M325 287 v60 M369 287 l24 60 l24 -60" fill="none" stroke="url(#glyph)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- play-pause: a raised key -->
+  <circle cx="360" cy="707" r="118" fill="url(#key)"/>
+  <circle cx="360" cy="707" r="117" fill="none" stroke="url(#lip)" stroke-width="3"/>
+  <path d="M310 681 v52 l40 -26 z" fill="url(#glyph)" stroke="#e8e3db" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M376 683 v48 M402 683 v48" stroke="url(#glyph)" stroke-width="17" stroke-linecap="round"/>
+
+  <!-- volume: one tall rocker across both halves -->
+  <rect x="560" y="199" width="208" height="626" rx="104" fill="url(#rocker)"/>
+  <rect x="561.5" y="200.5" width="205" height="623" rx="102.5" fill="none" stroke="url(#lip)" stroke-width="3"/>
+  <path d="M664 289 v56 M636 317 h56 M636 707 h56" stroke="url(#glyph)" stroke-width="15" stroke-linecap="round"/>
+</svg>
