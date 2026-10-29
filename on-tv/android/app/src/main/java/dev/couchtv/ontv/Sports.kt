@@ -41,14 +41,31 @@ object Sports {
         val all = all()
         val now = System.currentTimeMillis()
         val keys = words.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-        val out = (0 until all.length()).map { all.getJSONObject(it) }.filter { e ->
+        val found = (0 until all.length()).map { all.getJSONObject(it) }.filter { e ->
             val t = e.optString("title").lowercase()
-            e.optLong("stop") > now && keys.any { k -> matches(t, k) }
-        }.map { e ->
-            val t = e.optString("title").lowercase()
-            if (matches(t, "f1") || t.contains("formula 1")) JSONObject(e.toString()).put("opens", EON) else e
+            // Voyo streams what RTL broadcasts: the same event twice.
+            e.optLong("stop") > now && !e.optString("channel").lowercase().startsWith("voyo") && keys.any { k -> matches(t, k) }
         }.sortedBy { it.optLong("start") }
-        return JSONArray(out.take(8))
+        // The sport guide and RTL 2's own guide both list the same broadcast ("RTL2" and "RTL 2"): keep "RTL 2".
+        val unique = ArrayList<JSONObject>()
+        for (e in found) {
+            val ch = e.optString("channel").replace(" ", "").lowercase()
+            val i = unique.indexOfFirst { o -> o.optString("channel").replace(" ", "").lowercase() == ch && Math.abs(o.optLong("start") - e.optLong("start")) < 20 * 60_000L }
+            if (i < 0) unique += e else if (e.optString("channel").length > unique[i].optString("channel").length) unique[i] = e
+        }
+        val out = unique.take(8).map { e ->
+            val o = JSONObject(e.toString()).put("title", shortTitle(e.optString("title")))
+            if (F1.isF1(e.optString("title"))) F1.dress(o.put("opens", EON)) else o
+        }
+        return JSONArray(out)
+    }
+
+    /** "UŽIVO: FORMULA 1 GRAN PREMIO ..." to "Formula 1 Gran Premio ...": no live prefix, no shouting. */
+    private fun shortTitle(t: String): String {
+        var s = t.replace(Regex("^(uživo|uzivo|live)\\s*[:-]\\s*", RegexOption.IGNORE_CASE), "").trim()
+        if (s.count { it.isLetter() && it.isUpperCase() } > s.count { it.isLetter() } * 0.7)
+            s = s.lowercase().split(" ").joinToString(" ") { w -> if (w == "f1") "F1" else w.replaceFirstChar { it.titlecase() } }
+        return s
     }
 
     /** What is on now on each channel (or next, when now is filler), with artwork from TMDB when it has some. */

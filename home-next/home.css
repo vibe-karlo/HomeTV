@@ -62,6 +62,7 @@ body.browse .hero-shade { background-color: rgba(13, 12, 11, 0.38); }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);   /* sport photos are busy where the title sits */
 }
+#hero-title .event-title.long { font-size: 60px; }   /* a long name stays within two lines at a calmer size */
 /* No picture for it: a clean dark title card, never the previous show's picture. */
 #hero.event .hero-img.on { opacity: 0; }
 /* Sport photos are bright and busy: a deeper shade from the left, where the title sits. */
@@ -76,13 +77,16 @@ body.browse .hero-shade { background-color: rgba(13, 12, 11, 0.38); }
 #hero-desc {
   margin: 16px 0 0; max-width: 780px; font-size: 26px; line-height: 1.42; color: var(--ink-2);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  opacity: 0; transform: translateY(8px); transition: opacity 400ms var(--ease), transform 400ms var(--ease);
+  /* Hidden on the home view, and taking no room there, so the button sits right under the title and its line. */
+  max-height: 0; margin-top: 0;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 400ms var(--ease), transform 400ms var(--ease), max-height 400ms var(--ease), margin-top 400ms var(--ease);
 }
-body.browse #hero-desc { opacity: 1; transform: none; }
+body.browse #hero-desc { opacity: 1; transform: none; max-height: 76px; margin-top: 16px; }
 
 /* Up from the dock: the featured show, with one way in. */
 #hero-watch {
-  position: relative; display: inline-flex; align-items: center; height: 68px; margin-top: 30px; padding: 0 34px;
+  position: relative; display: inline-flex; align-items: center; height: 68px; margin-top: 40px; padding: 0 34px;
   border-radius: 18px; background: rgba(246, 243, 238, 0.14); color: var(--ink);
   font-size: 26px; font-weight: 600; transform-origin: left center;
   transition: background-color 200ms var(--ease), color 200ms var(--ease), transform 260ms var(--ease), opacity 300ms var(--ease);

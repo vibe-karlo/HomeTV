@@ -118,9 +118,10 @@ window.HOME_READY.then(function () {
     return sport.concat(tv).filter(function (e) { return e.stop > Date.now(); }).map(function (e) {
       var t = e.title.toLowerCase();
       // Pictures shipped with the home screen (credits in Settings, About).
-      var bg = e.kind === "tv" ? (e.image ? art(e.image, 1280) : null)
+      // The event's own picture (each F1 session has its own), else one shipped with the home screen.
+      var bg = e.image ? art(e.image, 1280) : e.kind === "tv" ? null
         : /(^|[^a-z0-9])f1([^a-z0-9]|$)|formula 1/.test(t) ? "sport/f1.jpg" : /osijek/.test(t) ? "sport/osijek.jpg" : null;
-      return { kind: "live", tv: e.kind === "tv", title: e.title.replace(/,?\s*ep\.\s*(\d+)\.?$/, " \u00b7 Ep. $1"),
+      return { kind: "live", tv: e.kind === "tv", title: e.title.replace(/,?\s*ep\.\s*(\d+)\.?$/, " \u00b7 Ep. $1"), session: e.session,
         channel: e.channel, start: e.start, stop: e.stop, opens: e.opens, bg: bg, desc: e.desc, id: "live:" + e.channel + e.start };
     });
   }
@@ -130,8 +131,9 @@ window.HOME_READY.then(function () {
       $("#hero").classList.toggle("event", !item.bg);   // no picture: a dark title card
       $("#hero").classList.toggle("sport", !!item.bg);
       var t = $("#hero-title"); t.textContent = "";
-      var s = document.createElement("div"); s.className = "text-title event-title"; s.textContent = item.title; t.appendChild(s);
-      $("#hero-meta").innerHTML = '<span class="src">' + when(item) + '</span><span class="sep">·</span>' + item.channel.replace(/ HR$/, "");
+      var s = document.createElement("div"); s.className = "text-title event-title" + (item.title.length > 34 ? " long" : ""); s.textContent = item.title; t.appendChild(s);
+      $("#hero-meta").innerHTML = (item.session ? '<span class="src">' + esc(item.session) + '</span><span class="sep">·</span>' + when(item) : '<span class="src">' + when(item) + '</span>')
+        + '<span class="sep">·</span>' + esc(item.channel.replace(/ HR$/, ""));
       $("#hero-desc").textContent = item.desc || "";
       $("#hero-watch .label").textContent = "Watch on " + (APP_NAME[item.opens] || "TV");
       $("#hero-watch").classList.remove("none");
