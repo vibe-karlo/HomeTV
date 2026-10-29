@@ -24,6 +24,8 @@
 
     <!-- Android TV's Watch Next list, for Continue Watching. Asked for on the TV, or granted over ADB. -->
     <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
+    <!-- The TV's own channels and guide (a normal permission on this Philips: granted on install). -->
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

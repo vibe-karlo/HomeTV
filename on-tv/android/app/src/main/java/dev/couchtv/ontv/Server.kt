@@ -158,6 +158,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/app-rows" -> json(200, ok().put("rows", AppRows.choices()).put("allowed", WatchNext.allowed()))
             "GET /api/app-rows/shown" -> { AppRows.stale(); json(200, ok().put("rows", AppRows.shown())) }
             "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
+            "GET /api/tv-guide" -> json(200, ok().put("allowed", TvGuide.allowed()).put("channels", TvGuide.nowNext()))
             "GET /api/live-channels" -> json(200, ok().put("channels", JSONArray(Sports.CHANNELS.values.toList())))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
             "GET /api/tv-apps" -> {

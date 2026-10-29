@@ -16,6 +16,8 @@ android {
         val env = rootProject.file("../../.env.local").takeIf { it.isFile }?.readLines().orEmpty()
         val tmdb = env.firstOrNull { it.trim().startsWith("TMDB_KEY=") }?.substringAfter("=")?.trim().orEmpty()
         buildConfigField("String", "TMDB_KEY", "\"$tmdb\"")
+        // TVs are ARM: the x86 copies of Conscrypt and spake2 were 4.8 MB nobody runs.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
     buildFeatures { buildConfig = true }
     buildTypes {
@@ -31,7 +33,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    packaging { resources { excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/*.kotlin_module") } }
+    packaging { resources { excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/*.kotlin_module",
+        // A post-quantum scheme's tables (1.2 MB); ADB pairing uses RSA.
+        "org/bouncycastle/pqc/crypto/picnic/**") } }
 }
 
 dependencies {

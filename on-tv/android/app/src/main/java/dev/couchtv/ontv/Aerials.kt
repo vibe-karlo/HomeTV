@@ -65,7 +65,11 @@ object Aerials {
     private fun cached() = catalog.filter { File(dir, name(it)).isFile }
     private fun name(c: JSONObject) = c.optString("url").substringAfterLast('/')
 
+    /** Aerials show somewhere: as the screensaver, or behind the home screen. Otherwise nothing is downloaded. */
+    private fun wanted() = Prefs.json().let { it.optBoolean("screensaver", true) || it.optString("background") == "aerial" }
+
     @Synchronized private fun fill() {
+        if (!wanted()) return
         // The first two clips download straight away; after that, never while a streaming app is in
         // front, so a 200 MB download does not compete with what you are watching.
         if (cached().size >= 2 && Tv.isOn) {
@@ -86,6 +90,7 @@ object Aerials {
     }
 
     @Synchronized private fun rotate() {
+        if (!wanted()) return
         val oldest = cached().minByOrNull { File(dir, name(it)).lastModified() } ?: return
         if (cached().size >= KEEP) File(dir, name(oldest)).delete()
         fill()
