@@ -32,7 +32,10 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
 
     override fun openWebSocket(handshake: IHTTPSession): WebSocket = Socket(handshake)
 
+    private val current = ThreadLocal<IHTTPSession>()   // each request has its own thread: lets asset() see If-None-Match
+
     override fun serveHttp(s: IHTTPSession): Response = try {
+        current.set(s)
         val uri = s.uri
         when {
             uri.startsWith("/api/") -> api(s)
@@ -142,20 +145,18 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 AppRows.shown().let { a -> for (i in 0 until a.length()) rows.put(a.get(i)) }
                 shows.optJSONArray("rows")?.let { r -> for (i in 0 until r.length()) rows.put(r.get(i)) }
                 json(200, ok().put("rows", rows).put("aerials", Aerials.list()).put("address", App.lanAddress() ?: JSONObject.NULL)
-                    .put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
-                    .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Prefs.tvNowChannels()) else JSONArray())
+                    .put("sport", Sports.payload().optJSONArray("sport")).put("tvnow", Sports.payload().optJSONArray("tvnow"))
                     .put("port", Store.port).put("version", BuildConfig.VERSION_NAME))
             }
             "POST /api/open-show" -> json(200, Shows.open(body(s)))
-            "GET /api/sport" -> json(200, ok().put("sport", if (Prefs.sportOn()) Sports.events(Prefs.sportWords()) else JSONArray())
-                .put("tvnow", if (Prefs.tvNowOn()) Sports.nowOn(Prefs.tvNowChannels()) else JSONArray()))
+            "GET /api/sport" -> Sports.payload().let { p -> json(200, ok().put("sport", p.optJSONArray("sport")).put("tvnow", p.optJSONArray("tvnow"))) }
             "POST /api/continue/remove" -> { val b = body(s); Shows.forget(b.optString("id"), b.optLong("at")); json(200, ok()) }
             // Continue Watching again, when the home screen comes back from an app.
             "GET /api/continue-row" -> json(200, ok().put("row", Shows.continueRow()).put("watchNext", WatchNext.allowed()))
             "POST /api/watchnext/open" -> json(200, WatchNext.open(body(s).optString("id")))
             // App rows: every one there is (for Settings), the shown ones again, and opening a card.
             "GET /api/app-rows" -> json(200, ok().put("rows", AppRows.choices()).put("allowed", WatchNext.allowed()))
-            "GET /api/app-rows/shown" -> { AppRows.changed(); json(200, ok().put("rows", AppRows.shown())) }
+            "GET /api/app-rows/shown" -> { AppRows.stale(); json(200, ok().put("rows", AppRows.shown())) }
             "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
             "GET /api/live-channels" -> json(200, ok().put("channels", JSONArray(Sports.CHANNELS.values.toList())))
             // The TV's apps in the home screen's dock order, without the ones hidden there.
@@ -471,9 +472,17 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
 
     private fun exists(path: String) = try { assets.open(path).close(); true } catch (e: IOException) { false }
 
+    // The page's files change only when the app is installed again: that install's time is their version.
+    private val stamp by lazy { "\"" + ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime.toString(36) + "\"" }
+
+    /** A file of the page: fonts and pictures kept for a while, the rest checked (a quick 304) on each load. */
     private fun asset(path: String): Response = try {
-        val stream = assets.open(path)
-        newChunkedResponse(Response.Status.OK, mime(path), stream).noCache()
+        val r = if (current.get()?.headers?.get("if-none-match") == stamp) newFixedLengthResponse(Response.Status.NOT_MODIFIED, mime(path), "")
+            else assets.open(path).use { it.readBytes() }.let { b -> newFixedLengthResponse(Response.Status.OK, mime(path), java.io.ByteArrayInputStream(b), b.size.toLong()) }
+        r.apply {
+            addHeader("ETag", stamp)
+            addHeader("Cache-Control", if (Regex("\\.(woff2|ttf|jpe?g|png|webp|svg)$").containsMatchIn(path)) "max-age=86400" else "no-cache")
+        }
     } catch (e: IOException) { newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found") }
 
     /** An aerial clip kept on the TV, with byte ranges so the home screen's video can stream and seek. */

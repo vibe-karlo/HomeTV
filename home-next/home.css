@@ -116,7 +116,8 @@ body.browse #hero-desc { opacity: 1; transform: none; max-height: 76px; margin-t
   transition: opacity 500ms var(--ease);
 }
 #aerial-caption.fade { opacity: 0; }
-body.aerial:not(.browse) #aerial, body.aerial:not(.browse) #aerial-info { opacity: 1; }
+body.aerial:not(.browse) #aerial { opacity: 1; }   /* the place and captions stay hidden: only the video */
+#aerial-info { display: none; }
 body.aerial:not(.browse) #hero-info { opacity: 0; }
 body.aerial:not(.browse) .hero-img { opacity: 0; }
 body.aerial:not(.browse) .hero-shade { opacity: 0; }
@@ -205,7 +206,7 @@ body.browse #dock { opacity: 0; }
 .tile {
   position: relative; flex: none; width: 260px; height: 146px; border-radius: 22px;
   background: #1b1a18 center / cover no-repeat; cursor: pointer;
-  transform: translateZ(0); transition: transform 260ms var(--ease), box-shadow 260ms var(--ease), opacity 300ms var(--ease);
+  transition: transform 260ms var(--ease), opacity 300ms var(--ease);   /* no layer per card: a 2 GB TV runs short of GPU memory */
 }
 .tile.out { opacity: 0; pointer-events: none; }   /* scrolled past the shelf's edges */
 .tile.cover-icon { background-size: auto 100%; }
@@ -223,6 +224,13 @@ body.browse #dock { opacity: 0; }
 
 /* Focus: lift toward the viewer, cast a tight shadow downward, one specular pass. */
 .focusable.focus { transform: scale(1.12); box-shadow: 0 22px 30px -16px rgba(0, 0, 0, 0.62); z-index: 2; }
+/* Cards and tiles: the shadow is painted once on a layer of its own and only faded, never repainted per frame. */
+.card.focus, .tile.focus { box-shadow: none; }
+.card::after, .tile::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  box-shadow: 0 22px 30px -16px rgba(0, 0, 0, 0.62); opacity: 0; transition: opacity 260ms var(--ease);
+}
+.card.focus::after, .tile.focus::after { opacity: 1; }
 .focusable.focus .dim { opacity: 0; }
 .tile.focus .name { opacity: 1; }
 /* Moving an app: it lifts a little further and rocks gently until OK puts it down. */
@@ -256,14 +264,14 @@ body.browse #dock { opacity: 0; }
 .card {
   position: relative; flex: none; width: 418px; height: 235px; border-radius: 18px;
   background: #1b1a18 center / cover no-repeat; cursor: pointer;
-  transform: translateZ(0); transition: transform 260ms var(--ease), box-shadow 260ms var(--ease), opacity 300ms var(--ease);
+  transition: transform 260ms var(--ease), opacity 300ms var(--ease);   /* no layer per card: a 2 GB TV runs short of GPU memory */
 }
 .card.out { opacity: 0; }
 .card.peek .caption { opacity: 0; }   /* the card peeking at the right edge keeps its words off the edge */
 .card .dim { position: absolute; inset: 0; border-radius: inherit; background: rgba(13, 12, 11, 0.3); transition: opacity 260ms var(--ease); pointer-events: none; }
 .card .logo {
   position: absolute; left: 24px; right: 24px; bottom: 20px; height: 70px;
-  background: left bottom / contain no-repeat; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5));
+  background: left bottom / contain no-repeat;   /* the scrim under it keeps it readable: no per-card filter */
 }
 .card .scrim { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%); }
 .card.own-art .scrim { display: none; }

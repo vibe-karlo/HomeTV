@@ -19,22 +19,41 @@ object AppArt {
     private val icons = ConcurrentHashMap<String, ByteArray>()
     private val FLAP = Color.parseColor("#131614")
 
-    fun init(c: Context) { ctx = c.applicationContext }
+    // The app list and its names, read once and again only when an app is installed, updated or removed:
+    // reading every app's name is slow on this TV, and the dock, the phone and every banner asked for it.
+    @Volatile private var apps: List<ResolveInfo>? = null
+    private val labels = ConcurrentHashMap<String, String>()
 
-    fun tvApps(): List<ResolveInfo> = Tv.tvLaunchables().filter { it.activityInfo.packageName != ctx.packageName }
-        .sortedBy { it.loadLabel(ctx.packageManager).toString().lowercase() }
+    fun init(c: Context) {
+        ctx = c.applicationContext
+        val f = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_PACKAGE_ADDED); addAction(android.content.Intent.ACTION_PACKAGE_REMOVED)
+            addAction(android.content.Intent.ACTION_PACKAGE_CHANGED); addAction(android.content.Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        ctx.registerReceiver(object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context, i: android.content.Intent) {
+                apps = null; labels.clear()
+                i.data?.schemeSpecificPart?.let { banners.remove(it); icons.remove(it) }
+            }
+        }, f)
+    }
 
-    fun label(ri: ResolveInfo) = ri.loadLabel(ctx.packageManager).toString()
+    fun tvApps(): List<ResolveInfo> = apps ?: Tv.tvLaunchables().filter { it.activityInfo.packageName != ctx.packageName }
+        .sortedBy { label(it).lowercase() }.also { apps = it }
+
+    fun label(ri: ResolveInfo) = labels.getOrPut(ri.activityInfo.packageName) { ri.loadLabel(ctx.packageManager).toString() }
 
     fun banner(pkg: String): ByteArray? {
         banners[pkg]?.let { return it }
         val pm = ctx.packageManager
         val ri = tvApps().firstOrNull { it.activityInfo.packageName == pkg } ?: return null
-        val bmp = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        // The dock draws a banner about 260 px wide: 400 leaves room for its focus zoom, at a third of 640's pixels.
+        val bmp = Bitmap.createBitmap(400, 225, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.drawColor(FLAP)
         val banner = ri.activityInfo.loadBanner(pm) ?: ri.activityInfo.applicationInfo.loadBanner(pm)
-        if (banner != null) { banner.setBounds(0, 0, 640, 360); banner.draw(c) } else iconTile(ri.loadIcon(pm), c)
+        if (banner != null) { banner.setBounds(0, 0, 400, 225); banner.draw(c) } else iconTile(ri.loadIcon(pm), c)
         val bytes = ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it); bmp.recycle() }.toByteArray()
         banners[pkg] = bytes
         return bytes
@@ -49,8 +68,8 @@ object AppArt {
         } else { icon.setBounds(0, 0, n, n); icon.draw(sc) }
         val edge = sq.getPixel(2, n / 2)
         c.drawColor(edge)
-        val size = 220
-        c.drawBitmap(sq, null, Rect(320 - size / 2, 180 - size / 2, 320 + size / 2, 180 + size / 2), Paint(Paint.FILTER_BITMAP_FLAG))
+        val size = 138   // the icon centred on the 400 x 225 banner, at the same share of it as before
+        c.drawBitmap(sq, null, Rect(200 - size / 2, 112 - size / 2, 200 + size / 2, 112 + size / 2), Paint(Paint.FILTER_BITMAP_FLAG))
         sq.recycle()
     }
 

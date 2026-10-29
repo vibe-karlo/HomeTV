@@ -127,6 +127,10 @@ object WatchNext {
 
     private fun str(c: android.database.Cursor, i: Int) = if (c.isNull(i)) "" else (c.getString(i) ?: "").trim()
 
+    /** The artwork's file name when it is already in `dir`, without fetching anything. */
+    fun cachedOnly(dir: File, uri: String, width: Int): String? =
+        (Integer.toHexString(uri.hashCode()) + "_$width.jpg").takeIf { File(dir, it).isFile }
+
     /** The artwork as a JPEG of at most `width` px in `dir`, fetched once per address. Content URIs only open here, on the TV. */
     fun cachedArt(dir: File, uri: String, width: Int): String? {
         val name = Integer.toHexString(uri.hashCode()) + "_$width.jpg"

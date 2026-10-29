@@ -39,6 +39,7 @@ object Prefs {
     fun changed() {
         Aerials.changed()
         AppRows.changed()
+        Sports.changed()
         applyScreensaver()
     }
 

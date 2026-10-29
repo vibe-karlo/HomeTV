@@ -292,6 +292,7 @@ window.HOME_READY.then(function () {
     stack = [{ id: "root", focus: 0 }]; side = null;
     loadInputs(); loadAppRows();
     el.hidden = false; void el.offsetWidth; el.classList.add("open"); openFlag = true;
+    H.frostCatchUp();   // its glass was left unpainted while closed
     draw();
   }
   function close() {

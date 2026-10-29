@@ -36,6 +36,37 @@ object Sports {
     @Volatile private var cache: JSONArray? = null
     @Volatile private var at = 0L
 
+    @Volatile private var ready: JSONObject? = null
+    @Volatile private var readyAt = 0L
+    @Volatile private var refreshing = false
+
+    /**
+     * The sport and Live TV slides for the home screen, straight away: what was worked out last (the
+     * guides, F1's calendar and pictures, show art all come from the web), redone in the background when
+     * older than 5 minutes. Ended broadcasts in it are left for the page to skip.
+     */
+    fun payload(): JSONObject {
+        val p = ready ?: (Store.readJson("sport-payload.json") as? JSONObject)?.also { ready = it }
+        if (p == null || System.currentTimeMillis() - readyAt > 5 * 60_000L) refreshLater()
+        return p ?: JSONObject().put("sport", JSONArray()).put("tvnow", JSONArray())
+    }
+
+    /** Settings changed the words or channels: work it out again now. */
+    fun changed() { readyAt = 0; refreshLater() }
+
+    private fun refreshLater() {
+        if (refreshing) return
+        refreshing = true
+        Thread {
+            try {
+                val o = JSONObject().put("sport", if (Prefs.sportOn()) events(Prefs.sportWords()) else JSONArray())
+                    .put("tvnow", if (Prefs.tvNowOn()) nowOn(Prefs.tvNowChannels()) else JSONArray())
+                ready = o; readyAt = System.currentTimeMillis()
+                Store.writeJson("sport-payload.json", o)
+            } catch (e: Exception) { Log.w("couchtv", "sport: ${e.message}") } finally { refreshing = false }
+        }.start()
+    }
+
     /** Broadcasts whose title matches one of the words, not yet over, soonest first. */
     fun events(words: List<String>): JSONArray {
         val all = all()

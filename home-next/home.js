@@ -68,14 +68,24 @@ window.HOME_READY.then(function () {
     // Two-step downscale averages the picture instead of sampling it, so the glass has no speckle.
     var m = mid.getContext("2d"); m.imageSmoothingQuality = "high";
     m.drawImage(img, 0, 0, 320, 180);
-    frostHosts.forEach(function (f) {
+    frostHosts.forEach(paintHost);
+  }
+  // A panel that is hidden (settings closed, no forecast) waits: it is painted from the last picture when it shows.
+  function frostHidden(f) {
+    return f.host.hidden || f.host.offsetParent === null || (f.host.id === "forecast" && !document.body.classList.contains("forecast"));
+  }
+  function paintHost(f) {
+    if (frostHidden(f)) { f.stale = true; return; }
+    f.stale = false;
+    {
       var next = f.pair[1 - f.cur], g = next.getContext("2d");
       g.imageSmoothingQuality = "high";
       g.drawImage(mid, 0, 0, FW, FH);
       g.fillStyle = "rgba(13,12,11,0.18)"; g.fillRect(0, 0, FW, FH);
       next.classList.add("on"); f.pair[f.cur].classList.remove("on"); f.cur = 1 - f.cur;
-    });
+    }
   }
+  function frostCatchUp() { frostHosts.forEach(function (f) { if (f.stale) paintHost(f); }); }
 
   // ---------------------------------------------------------------- hero
 
@@ -211,7 +221,7 @@ window.HOME_READY.then(function () {
     '<path d="M31 9h10l1.6 7.2a21 21 0 0 1 5.3 3.1l7-2.3 5 8.6-5.4 5a21 21 0 0 1 0 6.1l5.4 5-5 8.6-7-2.3a21 21 0 0 1-5.3 3.1L41 63H31l-1.6-7.2a21 21 0 0 1-5.3-3.1l-7 2.3-5-8.6 5.4-5a21 21 0 0 1 0-6.1l-5.4-5 5-8.6 7 2.3a21 21 0 0 1 5.3-3.1z"/>' +
     '<circle cx="36" cy="36" r="8.5"/></svg>';
 
-  var dockTrack = $("#dock-track"), apps = [], tiles = [];
+  var dockTrack = $("#dock-track"), apps = [], tiles = [], scroller = $("#scroller");
   function buildDock() {
     var mine = prefs.appOrder || [];
     var rank = function (a) { var i = mine.indexOf(a.package); return i < 0 ? 1000 + DATA.apps.indexOf(a) : i; };
@@ -219,6 +229,7 @@ window.HOME_READY.then(function () {
       .sort(function (a, b) { return rank(a) - rank(b); })
       .concat([{ package: "settings", name: "Settings" }]);
     dockTrack.textContent = "";
+    dockTrack.drawn = null;   // new tiles: draw the shelf again
     focused = null;
     tiles = apps.map(dockTile);
     st.dock = Math.min(st.dock, apps.length - 1);
@@ -313,24 +324,32 @@ window.HOME_READY.then(function () {
 
     // Dock: hold focus near the left once it passes the fifth tile.
     var first = Math.max(0, Math.min(st.dock - 4, apps.length - 6));
-    dockTrack.style.transform = "translateX(" + -first * TILE + "px)";
-    tiles.forEach(function (t, i) { t.classList.toggle("out", i < first || i > first + 5); });
+    if (dockTrack.drawn !== first) {
+      dockTrack.drawn = first;
+      dockTrack.style.transform = "translateX(" + -first * TILE + "px)";
+      tiles.forEach(function (t, i) { t.classList.toggle("out", i < first || i > first + 5); });
+    }
+    // Only rows whose state changed are touched: a key press then restyles one or two rows, not the page.
     rows.forEach(function (r, i) {
-      var off = Math.max(0, r.col - 1);
-      r.el.classList.toggle("active", st.zone === "rows" && i === st.row);
-      r.el.classList.toggle("past", st.zone === "rows" && i < st.row);
+      var off = Math.max(0, r.col - 1), active = st.zone === "rows" && i === st.row, past = st.zone === "rows" && i < st.row;
+      var key = off + (active ? "a" : "") + (past ? "p" : "");
+      if (r.drawn === key) return;
+      r.drawn = key;
+      r.el.classList.toggle("active", active);
+      r.el.classList.toggle("past", past);
       r.track.style.transform = "translateX(" + -off * CARD + "px)";
       r.cards.forEach(function (c, ci) { c.classList.toggle("out", ci < off); c.classList.toggle("peek", ci > off + 3); });
     });
     // In browse the focused row sits just under the hero info; on the dock only card tops peek.
     var y = st.zone === "rows" ? 560 - (990 + st.row * 392) : 0;
-    $("#scroller").style.transform = "translateY(" + y + "px)";
+    if (scroller.drawn !== y) { scroller.drawn = y; scroller.style.transform = "translateY(" + y + "px)"; }
     if (rows.length) rows[0].el.querySelector("h2").style.opacity = st.zone === "rows" ? "" : "0";
     paintNear(st.zone === "rows" ? st.row : 0);
+    frostCatchUp();
 
     clearTimeout(heroTimer);
     if (st.zone === "hero" || st.zone === "top") { clearInterval(rotateTimer); return; }   // the featured show holds still while focused
-    heroTimer = setTimeout(followFocus, st.zone === "rows" ? 180 : 320);
+    heroTimer = setTimeout(followFocus, st.zone === "rows" ? 400 : 320);   // scrolling past cards does not load each one's picture
   }
 
   function heroPool() {
@@ -389,11 +408,11 @@ window.HOME_READY.then(function () {
     var v = aerial.vids[aerial.cur];
     if (!active) { if (aerial.clip) v.pause(); return; }
     if (!aerial.clip) playAerial(pickAerial()); else v.play().catch(function () {});
-    // The glass follows the video: a tiny frame every 1.5 s, crossfaded.
+    // The glass follows the video: a tiny frame every 8 s, crossfaded (each grab reads the video back on the main thread).
     aerial.frostTimer = setInterval(function () {
       var cv = aerial.vids[aerial.cur];
       if (cv.readyState >= 2) paintFrost(cv);
-    }, 1500);
+    }, 8000);
   }
   function setBackground(mode) {
     prefs.background = mode; savePrefs();
@@ -653,6 +672,7 @@ window.HOME_READY.then(function () {
     newAerial: function () { if (aerial.on && aerial.clip && prefs.aerialCats.indexOf(aerial.clip.cat) < 0) aerial.clip = null; },
     rebuildDock: function () { buildDock(); render(); clearInterval(rotateTimer); aerialActive(false); },
     refreshRows: function () { refreshContinue(); },
+    frostCatchUp: function () { frostCatchUp(); },
     rebuildRows: function () { heroItem = null; buildRows(); render(); clearInterval(rotateTimer); aerialActive(false); },
     genres: function () {
       var seen = {};

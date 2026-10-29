@@ -28,6 +28,8 @@ rm -rf "$B/web" && mkdir -p "$B/web/tv" "$B/web/remote"
 rsync -a --exclude 'preview-data.js' --exclude 'aerials.js' --exclude 'aerial-cache*' --exclude 'banners' \
   --exclude 'serve.py' "$ROOT/home-next/" "$B/web/tv/"
 rsync -a "$ROOT/remote-next/" "$B/web/remote/"
+# Their script tags too, or the TV asks for three missing files before the page can start.
+sed -i '' -E -e '/preview-data\.js|aerials\.js|aerial-cache\.js/d' -e '/Preview data .left out/d' "$B/web/tv/index.html"
 
 # Apple's aerial catalog, for the TV app to download from.
 mkdir -p "$ROOT/on-tv/android/app/src/main/assets"

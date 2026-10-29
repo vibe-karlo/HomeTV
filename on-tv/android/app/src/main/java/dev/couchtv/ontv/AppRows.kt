@@ -83,7 +83,8 @@ object AppRows {
         val all = list()
         val rows = if (picked != null) picked.mapNotNull { k -> all.firstOrNull { it.key == k } } else all.filter { it.browsable }
         for (r in all) {
-            val items = items(r, keep, newLinks)
+            // Artwork only for what can show: the picked rows and anything you are in the middle of.
+            val items = items(r, keep, newLinks, r in rows || RESUME.containsMatchIn(r.name))
             val whole = RESUME.containsMatchIn(r.name)
             val rest = JSONArray()
             for (i in 0 until items.length()) {
@@ -96,7 +97,7 @@ object AppRows {
         val order = rows.map { "app:" + it.key }
         val sorted = (0 until out.length()).map { out.getJSONObject(it) }.sortedBy { order.indexOf(it.optString("id")) }
         links = newLinks
-        dir.listFiles()?.forEach { if (it.name !in keep && !it.name.endsWith(".part")) it.delete() }
+        dir.listFiles()?.forEach { if (it.name !in keep && !it.name.endsWith(".part") && System.currentTimeMillis() - it.lastModified() > 120_000) it.delete() }   // not art that just landed
         cached = JSONArray(sorted); resume = res; at = System.currentTimeMillis()
         return cached to resume
     }
@@ -112,7 +113,21 @@ object AppRows {
 
     fun changed() { at = 0 }
 
-    private fun items(r: Row, keep: MutableSet<String>, newLinks: MutableMap<String, Pair<String, String?>>): JSONArray {
+    /** Back on the home screen: read the rows again only when the last read is older than 20 s. */
+    fun stale() { if (System.currentTimeMillis() - at > 20_000) at = 0 }
+
+    // Artwork not on the TV yet is fetched here, one at a time, so a read never waits on the network;
+    // when the last one lands, the next read picks them all up.
+    private val artPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private fun artLater(uri: String) {
+        if (!pending.add(uri)) return
+        artPool.execute {
+            try { WatchNext.cachedArt(dir, uri, 960) } finally { pending.remove(uri); if (pending.isEmpty()) at = 0 }
+        }
+    }
+
+    private fun items(r: Row, keep: MutableSet<String>, newLinks: MutableMap<String, Pair<String, String?>>, shows: Boolean): JSONArray {
         val out = JSONArray()
         try {
             ctx.contentResolver.query(TvContract.buildPreviewProgramsUriForChannel(r.id), null, null, null, null)?.use { c ->
@@ -143,7 +158,8 @@ object AppRows {
                         else -> ""
                     }
                     val artUri = str(c, iThumb).ifEmpty { str(c, iPoster) }
-                    val art = if (artUri.isEmpty()) null else WatchNext.cachedArt(dir, artUri, 960)
+                    val art = if (artUri.isEmpty()) null else WatchNext.cachedOnly(dir, artUri, 960)
+                        ?: run { if (shows || RESUME.containsMatchIn(str(c, iDesc))) artLater(artUri); null }
                     art?.let { keep.add(it) }
                     val id = "ar:" + Integer.toHexString("${r.key}\n$title\n$artUri".hashCode())
                     newLinks[id] = r.pkg to str(c, iLink).ifEmpty { null }

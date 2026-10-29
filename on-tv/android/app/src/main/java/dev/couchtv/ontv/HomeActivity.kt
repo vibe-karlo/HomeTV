@@ -97,7 +97,9 @@ class HomeActivity : Activity() {
         if (level >= TRIM_MEMORY_RUNNING_LOW) js("window.tv && tv.lowMemory && tv.lowMemory()")
     }
 
-    override fun onResume() { super.onResume(); hideBars(); if (ready) js("window.tv && tv.resume()") }
+    // Behind Netflix the page's clock, slider and fetches stop, so the app in front gets the CPU.
+    override fun onPause() { super.onPause(); web?.onPause(); web?.pauseTimers() }
+    override fun onResume() { super.onResume(); web?.resumeTimers(); web?.onResume(); hideBars(); if (ready) js("window.tv && tv.resume()") }
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); js("window.tv && tv.home()") }
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
@@ -122,7 +124,7 @@ class HomeActivity : Activity() {
             val out = JSONArray()
             for (ri in tvApps()) {
                 val ai = ri.activityInfo
-                out.put(JSONObject().put("package", ai.packageName).put("label", ri.loadLabel(packageManager).toString())
+                out.put(JSONObject().put("package", ai.packageName).put("label", AppArt.label(ri))
                     .put("hasBanner", ai.banner != 0 || ai.applicationInfo.banner != 0))
             }
             return out.toString()

@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** The screensaver: the aerials kept on the TV, with the place, Apple's captions and the time. */
+/** The screensaver: the aerials kept on the TV, with only the time over them. */
 class AerialDream : DreamService() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var video: VideoView
@@ -47,6 +47,7 @@ class AerialDream : DreamService() {
         root.addView(info, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(56), dp(48), 0, 0) })
         clock = text(30f, Typeface.BOLD, 1f)
         root.addView(clock, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(48), dp(56), 0) })
+        info.visibility = View.GONE   // only the videos and the time, no words over them
         setContentView(root)
 
         video.setOnPreparedListener { mp -> mp.setVolume(0f, 0f); mp.start(); veil.animate().alpha(0f).setDuration(1400).start() }
