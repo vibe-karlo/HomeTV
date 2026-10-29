@@ -166,8 +166,14 @@ object Shows {
         val items = JSONArray()
         val titles = HashSet<String>()
         val gone = wnRemoved()
+        // Apps switched off for this row in Settings, Continue Watching; and every app that has something
+        // for it, so Settings can list them.
+        val hidden = Prefs.json().optJSONArray("cwHidden")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
+        val apps = LinkedHashMap<String, String>()
         for (w in WatchNext.items()) {
             if (gone.has(w.optString("id")) && w.optLong("at") <= gone.optLong(w.optString("id"))) continue
+            w.optString("package").takeIf { it.isNotEmpty() }?.let { apps.putIfAbsent(it, w.optString("service")) }
+            if (w.optString("package") in hidden) continue
             if (!titles.add(Finder.norm(w.optString("title")))) continue
             items.put(w)
         }
@@ -176,6 +182,8 @@ object Shows {
         val res = AppRows.resuming()
         for (i in 0 until res.length()) {
             val r = res.getJSONObject(i)
+            r.optString("package").takeIf { it.isNotEmpty() }?.let { apps.putIfAbsent(it, r.optString("service")) }
+            if (r.optString("package") in hidden) continue
             if (!seen.add(r.optString("id")) || !titles.add(Finder.norm(r.optString("title")))) continue
             items.put(r)
         }
@@ -192,7 +200,9 @@ object Shows {
                 .put("source", it.optString("opens")).put("opens", it.optString("opens")))
             if (items.length() >= 24) break
         }
+        for (p in hidden) apps.putIfAbsent(p, p)
         return JSONObject().put("id", "continue").put("title", "Continue Watching").put("items", items)
+            .put("apps", JSONArray(apps.map { (p, n) -> JSONObject().put("package", p).put("name", n).put("hidden", p in hidden) }))
     }
 
     private const val STREMIO = "com.stremio.one"

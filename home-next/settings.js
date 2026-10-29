@@ -16,6 +16,13 @@ window.HOME_READY.then(function () {
   var SAMPLE_ROWS = [{ key: "hr.telekom.android.maxtvp|Sljedeće", title: "MAXtv · Sljedeće", count: 12, shown: true },
     { key: "uc.flex.hr.smarttv|Preporučeno", title: "EON · Preporučeno", count: 10, shown: false },
     { key: "com.netflix.ninja|Netflix", title: "Netflix", count: 20, shown: false }];
+  // The apps with something in Continue Watching, and whether each is kept out of it.
+  var cwApps = null;
+  function loadCwApps() {
+    var got = TV ? fetch("/api/continue-row").then(function (r) { return r.json(); })
+      : Promise.resolve({ ok: true, row: { apps: [{ package: "hr.telekom.android.maxtvp", name: "MAXtv" }, { package: "com.stremio.one", name: "Stremio" }] } });
+    got.then(function (d) { cwApps = (d.row && d.row.apps) || []; if (openFlag) draw(); }, function () { cwApps = []; if (openFlag) draw(); });
+  }
   function loadAppRows() {
     var got = TV ? fetch("/api/app-rows").then(function (r) { return r.json(); }) : Promise.resolve({ ok: true, rows: SAMPLE_ROWS, allowed: true });
     got.then(function (d) { appRows = d.rows || []; appRowsAllowed = d.allowed !== false; if (openFlag) draw(); },
@@ -84,6 +91,8 @@ window.HOME_READY.then(function () {
           act: function () { P.sport = !P.sport; H.save(); H.rebuildRows(); } },
         { label: "Live TV", menu: "live", value: P.tvnow ? liveChannels().length + " channels" : "Off",
           help: "What\u2019s on now on the channels you pick, in the slider at the top. From TvProfil\u2019s free guide; opens EON." },
+        { label: "Continue Watching", menu: "cw", value: (P.cwHidden || []).length ? (P.cwHidden || []).length + " hidden" : "Every app",
+          help: "Which apps put what you are in the middle of in the Continue Watching row." },
         { label: "App Rows", menu: "approws", value: appRows ? appRows.filter(function (r) { return r.shown; }).length + " shown" : "",
           help: "The rows your apps put on Android TV\u2019s home screen, like MAXtv\u2019s Sljede\u0107e, with their own pictures." },
         { label: "Hidden Genres", menu: "genres",
@@ -130,6 +139,21 @@ window.HOME_READY.then(function () {
             H.save(); H.toast(i >= 0 ? c + " is out of the slider" : c + " joins the slider within a minute");
           } };
       }));
+    } },
+
+    cw: { title: "Continue Watching", enter: loadCwApps, rows: function () {
+      if (!cwApps) return [{ label: "Looking for apps", help: "Asking the TV which apps have something in Continue Watching." }];
+      if (!cwApps.length) return [{ label: "Nothing yet", help: "Apps show here once they have something you are in the middle of." }];
+      return cwApps.map(function (a) {
+        var off = (P.cwHidden || []).indexOf(a.package) >= 0;
+        return { label: a.name || a.package, tick: !off, value: off ? "Hidden" : "Shown",
+          help: off ? "Select to put " + a.name + " back in Continue Watching." : "Select to keep " + a.name + " out of Continue Watching.",
+          act: function () {
+            P.cwHidden = (P.cwHidden || []).filter(function (p) { return p !== a.package; });
+            if (!off) P.cwHidden.push(a.package);
+            H.save(); H.refreshRows();
+          } };
+      });
     } },
 
     approws: { title: "App Rows", enter: loadAppRows, rows: function () {

@@ -20,7 +20,7 @@ import java.util.concurrent.Semaphore
 object Img {
     private const val TAG = "couchtv"
     private const val MAX_BYTES = 150L * 1024 * 1024
-    private val HOSTS = setOf("images.metahub.space", "images.justwatch.com", "image.tmdb.org", "images.rtl.hr", "image.dnevnik.hr", "media.formula1.com")
+    private val HOSTS = setOf("images.metahub.space", "images.justwatch.com", "image.tmdb.org", "images.rtl.hr", "image.dnevnik.hr", "media.formula1.com", "nk-osijek.hr")
     private val WIDTHS = listOf(320, 480, 640, 1280, 1920)
     private lateinit var dir: File
     private val decode = Semaphore(2)                       // two decodes at a time keeps memory flat

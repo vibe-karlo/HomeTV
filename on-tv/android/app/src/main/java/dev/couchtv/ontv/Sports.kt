@@ -86,7 +86,11 @@ object Sports {
         }
         val out = unique.take(8).map { e ->
             val o = JSONObject(e.toString()).put("title", shortTitle(e.optString("title")))
-            if (F1.isF1(e.optString("title"))) F1.dress(o.put("opens", EON)) else o
+            when {
+                F1.isF1(e.optString("title")) -> F1.dress(o.put("opens", EON))
+                Osijek.isOsijek(e.optString("title")) -> o.apply { Osijek.picture(e.optString("title"))?.let { put("image", it) } }
+                else -> o
+            }
         }
         return JSONArray(out)
     }
