@@ -109,7 +109,7 @@
     state.power = n.power;
     $("now-app").textContent = n.power === "off" ? "Philips TV" : (n.app && n.app.id !== "home" ? n.app.name : "Home");
     // With the playing card showing, the bar only says whether it plays; the card has the title.
-    var p = n.playing, card = p && p.title && p.state !== "stopped" && n.power !== "off";
+    var p = n.playing, card = p && p.state && p.state !== "stopped" && n.power !== "off";
     var what = n.power === "off" ? "Off" : card ? (p.state === "paused" ? "Paused" : p.state === "buffering" ? "Loading" : "Playing") : "Philips TV";
     $("now-what").textContent = what;
     $("power").classList.toggle("off", n.power === "off");
@@ -187,13 +187,13 @@
     $("pl-left").textContent = "−" + clock(d - p);
   }
   function showPlaying(p) {
-    var on = !!(p && p.title && p.state !== "stopped");
+    var on = !!(p && p.state && p.state !== "stopped");   // controls even when the app names nothing
     $("playing").hidden = !on;
     clearInterval(pl.timer);
     if (!on) { pl.item = null; return; }
     var same = pl.item && pl.item.title === p.title;
     pl.item = p; pl.pos = p.position_ms; pl.at = Date.now();
-    $("pl-title").textContent = p.title;
+    $("pl-title").textContent = p.title || $("now-app").textContent;
     $("pl-sub").textContent = p.subtitle || p.episode_title || "";
     var art = $("pl-art"), url = p.art ? p.art + (MOCK ? "" : "&token=" + encodeURIComponent(token || "")) : p.package && !MOCK ? "/art/banner/" + p.package : null;
     art.hidden = !url;

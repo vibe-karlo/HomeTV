@@ -62,11 +62,18 @@ object Media {
         val c = session(front) ?: return null
         val md = c.metadata
         val ps = c.playbackState ?: return null
+        // Netflix plays with no metadata at all: then what it last put in Watch Next (what you are watching),
+        // else the app's own name, so the phone still gets the card and its controls.
+        val wn = if (md?.getString(MediaMetadata.METADATA_KEY_TITLE).isNullOrBlank() && md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).isNullOrBlank())
+            runCatching { WatchNext.items().filter { it.optString("package") == c.packageName }.maxByOrNull { it.optLong("at") } }.getOrNull() else null
         val title = md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() }
+            ?: wn?.optString("title")?.takeIf { it.isNotBlank() }
+            ?: Apps.BY_PACKAGE[c.packageName]?.name ?: runCatching { ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(c.packageName, 0)).toString() }.getOrNull()
         val sub = md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_ARTIST)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_ALBUM)?.takeIf { it.isNotBlank() }
+            ?: wn?.let { listOf(it.optString("episode"), it.optString("episode_title")).filter { s -> s.isNotBlank() }.joinToString(" · ").ifEmpty { null } }
         val state = when (ps.state) {
             PlaybackState.STATE_PLAYING, PlaybackState.STATE_FAST_FORWARDING, PlaybackState.STATE_REWINDING -> "playing"
             PlaybackState.STATE_PAUSED -> "paused"
@@ -94,7 +101,8 @@ object Media {
             .put("package", c.packageName).put("service", Apps.BY_PACKAGE[c.packageName]?.id ?: JSONObject.NULL)
             .put("state", state).put("position_ms", if (pos >= 0) pos else JSONObject.NULL)
             .put("duration_ms", if (dur > 0) dur else JSONObject.NULL)
-            .put("art", if (artBytes != null) "/now/art?k=" + Integer.toHexString(key.hashCode()) else JSONObject.NULL)
+            .put("art", if (artBytes != null) "/now/art?k=" + Integer.toHexString(key.hashCode())
+                else wn?.optString("bg")?.takeIf { it.startsWith("/watchnext/art/") }?.let { "$it?k=1" } ?: JSONObject.NULL)
             .put("can", can).put("source", "session")
     }
 
