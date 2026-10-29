@@ -30,7 +30,7 @@
   <!-- TV: a dark key in a bright ring, the letters drawn as strokes like the other glyphs -->
   <circle cx="360" cy="317" r="112" fill="#1d1b19"/>
   <circle cx="360" cy="317" r="112" fill="none" stroke="url(#ring)" stroke-width="15"/>
-  <path d="M303 287 h44 M325 287 v60 M369 287 l24 60 l24 -60" fill="none" stroke="url(#glyph)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M314.4 293 h35.2 M332 293 v48 M367.2 293 l19.2 48 l19.2 -48" fill="none" stroke="url(#glyph)" stroke-width="12.5" stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- play-pause: a raised key -->
   <circle cx="360" cy="707" r="118" fill="url(#key)"/>
