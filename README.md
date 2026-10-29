@@ -79,6 +79,28 @@ the TV listings permission (for Continue Watching from your apps) and notificati
 it uses only to see what is playing. Without debugging, the TV asks for the first one once, and
 the second can be switched on under Settings, Apps, Special app access, Notification access.
 
+**Updating the TV.** With the TV on and a fresh build in `dist/`, one command installs it (slowly
+but surely, checked before installing), keeps the TV awake meanwhile, and makes sure HomeTV has
+the TV listings permission and notification access:
+```
+TV_IP=<tv-ip> sh scripts/tv-update.sh
+```
+
+**Switching off Philips telemetry (optional).** `scripts/debloat.py` switches off the analytics
+uploader, usage logging, the shop demo and the Top Picks promotions on Philips TPM191E sets (the
+2019 to 2020 PUS7304, PUS7354, PUS8505 and OLED854 on Android TV 12). Nothing is uninstalled,
+streaming apps, voice, Chromecast, firmware updates and Ambilight stay, and `undo` puts back
+exactly what it switched off. The list is in [on-tv/debloat/](on-tv/debloat/philips-tpm191e.txt),
+taken from [CleanYourTV](https://github.com/Gathin23/cleanyourtv)'s tested list (MIT).
+```
+TV_IP=<tv-ip> .venv/bin/python scripts/debloat.py plan     # what would change, read only
+TV_IP=<tv-ip> .venv/bin/python scripts/debloat.py apply
+TV_IP=<tv-ip> .venv/bin/python scripts/debloat.py undo
+TV_IP=<tv-ip> .venv/bin/python scripts/debloat.py check    # after a firmware update
+```
+`apply` only runs on that firmware family, and puts everything back by itself if one of the TV's
+inputs goes missing. `sh scripts/tv-update.sh --debloat` does the update and this in one go.
+
 **Sport photos (optional).** Put `f1.jpg` and `osijek.jpg` in `home-next/sport/` to show a photo
 behind those events. Without them the event shows on a plain dark card.
 
@@ -114,6 +136,8 @@ sh scripts/privacy-scan.sh <your-denylist-file>
   [Talkies](https://github.com/rajupp/talkies) by TechPP (MIT), which credits
   [Luma](https://github.com/0xProbabillity/luma-tv) and [Matinee](https://github.com/Jarvis322/matinee)
   (both MIT) for the device names and now playing ideas.
+- The telemetry list and the idea of switching packages off instead of removing them:
+  [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT).
 - Weather from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
 - Aerial films by Apple, streamed from Apple's servers and not included here.
 - Show data from Stremio Cinemeta and JustWatch, artwork from TMDB. This product uses the TMDB API

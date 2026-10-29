@@ -1,0 +1,40 @@
+# Philips TPM191E sets on Android TV 12 (device PH9M_EA_5599, MediaTek MT5887), for example the
+# 43/50/55/65/70PUS7304, 50PUS7354, 50/75PUS8505 and 55OLED854.
+#
+# Packages switched OFF with `pm disable-user`, never uninstalled. scripts/debloat.py records what was
+# on before and puts exactly that back with `undo`. Lines starting with # are skipped: take the # off
+# an entry under "Optional" to switch that one off too.
+#
+# Taken from CleanYourTV's tested list for this platform (examples/philips-tpm191e, MIT,
+# github.com/Gathin23/cleanyourtv), where a 43PUS7304/12 on firmware STT2.230526.001 ran all of the
+# entries below through two restarts with HDMI 1 to 4, Live TV and Ambilight still working.
+#
+# Left on, on purpose: the stock launcher and com.google.android.tvrecommendations (HomeTV does not
+# replace the launcher, and the notification panel needs them), Chromecast, both firmware updaters
+# (org.droidtv.oad, com.easy.oad), Alexa, the Philips side menu (org.droidtv.philipstvdrawer), the TV
+# app (org.droidtv.playtv), org.droidtv.eum, DTS Play-Fi, and every streaming app.
+
+# Telemetry and the shop demo
+org.droidtv.candeebug                     # "DAC" analytics uploader: channels watched, HDMI devices, viewing times
+org.droidtv.gel                           # metrics collector sharing candeebug's process
+org.droidtv.usagelogger                   # boot stats, remote key press counts, panel telemetry
+org.droidtv.tv.frameworklogger            # Philips framework logging
+org.droidtv.demome                        # "Demo me" shop demo mode
+org.droidtv.sticker                       # shop e-sticker overlay
+com.google.android.feedback               # Market Feedback Agent
+com.google.android.partnersetup           # partner referrer and attribution
+com.google.android.onetimeinitializer     # runs once at first setup, nothing afterwards
+com.google.android.syncadapters.calendar  # Google Calendar sync; there is no calendar app on the TV
+
+# Philips promotions
+org.droidtv.nettvrecommender              # "Top Picks" promotion row
+org.droidtv.recommendation                # its backend; after the row on purpose
+org.droidtv.nettv.market                  # "Smart TV Collection" app shop; the Play Store stays
+
+# Optional: take the # off what you do not use
+# com.google.android.katniss              # Google Assistant and voice search: the remote's mic button stops
+# com.amazon.amazonvideo.livingroom       # Prime Video
+# com.google.android.videos               # Google TV / Play Movies
+# com.google.android.play.games           # Play Games
+# com.google.android.marvin.talkback      # TalkBack screen reader
+# com.phorus.playfi.softap                # DTS Play-Fi soft access point
