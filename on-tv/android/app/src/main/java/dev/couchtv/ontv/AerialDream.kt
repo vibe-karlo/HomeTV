@@ -57,6 +57,7 @@ class AerialDream : DreamService() {
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
+        dreaming = true
         clips = Aerials.cachedFiles().shuffled()
         next()
         main.post(tick)
@@ -64,6 +65,7 @@ class AerialDream : DreamService() {
 
     override fun onDreamingStopped() {
         super.onDreamingStopped()
+        dreaming = false
         main.removeCallbacksAndMessages(null)
         runCatching { video.stopPlayback() }
     }
@@ -102,4 +104,10 @@ class AerialDream : DreamService() {
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    companion object {
+        /** On screen now: the home screen behind it keeps its page, since waking goes straight back to it. */
+        @Volatile var dreaming = false
+            private set
+    }
 }

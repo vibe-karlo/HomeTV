@@ -39,6 +39,16 @@ class HomeActivity : Activity() {
         App.startService(this)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         CookieManager.getInstance().setCookie(base, "couchtv_token=${Auth.internalToken}; path=/")
+        build()
+        hideBars()
+        // Continue Watching reads Android's Watch Next list. ADB grants this silently; without ADB, ask once.
+        if (!WatchNext.allowed() && !Store.bool("asked_tv_listings")) {
+            Store.putBool("asked_tv_listings", true)
+            runCatching { requestPermissions(arrayOf(WatchNext.PERMISSION), 7) }
+        }
+    }
+
+    private fun build() {
         val w = WebView(this).apply {
             setBackgroundColor(GROUND)
             isFocusable = true; isFocusableInTouchMode = true
@@ -56,12 +66,13 @@ class HomeActivity : Activity() {
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest) = true
                 // Android may end the page's renderer when memory runs out. Build a fresh WebView
-                // instead of crashing or leaving a dead screen.
+                // instead of crashing or leaving a dead screen; while away, only when Home is back (onStart).
                 override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                    if (view !== web) return true   // a page let go on purpose (release): nothing to rebuild
                     android.util.Log.w("couchtv", "home renderer gone (crash=${detail.didCrash()}), rebuilding")
                     (view.parent as? android.view.ViewGroup)?.removeView(view)
                     view.destroy(); web = null; ready = false
-                    main.post { recreate() }
+                    if (shown) main.post { recreate() }
                     return true
                 }
                 override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
@@ -76,13 +87,59 @@ class HomeActivity : Activity() {
         }
         web = w
         setContentView(w)
-        hideBars()
         load()
-        // Continue Watching reads Android's Watch Next list. ADB grants this silently; without ADB, ask once.
-        if (!WatchNext.allowed() && !Store.bool("asked_tv_listings")) {
-            Store.putBool("asked_tv_listings", true)
-            runCatching { requestPermissions(arrayOf(WatchNext.PERMISSION), 7) }
-        }
+    }
+
+    // ---------------------------------------------------------------- letting the page go during a film
+
+    // Away in another app (a film, a match) for a while: the page and its renderer give their memory to that app,
+    // which on this 2 GB TV is what playback and a picture-in-picture camera run short of. Home draws it again
+    // from the copy the page keeps, in about a second. The screensaver and Android's own screens keep it:
+    // waking or backing out of those goes straight back to the home screen.
+    private var shown = false
+    private val release = Runnable { releaseIfAway() }
+
+    override fun onStart() {
+        super.onStart()
+        shown = true
+        main.removeCallbacks(release)
+        if (web == null) build()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        shown = false
+        main.removeCallbacks(release)
+        main.postDelayed(release, RELEASE_AFTER)
+    }
+
+    override fun onDestroy() {
+        main.removeCallbacks(release)
+        super.onDestroy()
+    }
+
+    private fun releaseIfAway() {
+        if (shown || web == null) return
+        Thread {
+            val front = runCatching { Tv.frontPackage() }.getOrNull()
+            val away = !AerialDream.dreaming && front != null && front !in Apps.HOME_PACKAGES && front !in NOT_AN_APP
+            main.post {
+                if (shown || web == null) return@post
+                main.removeCallbacks(release)
+                if (away) letGo() else main.postDelayed(release, RELEASE_AFTER)
+            }
+        }.start()
+    }
+
+    private fun letGo() {
+        val w = web ?: return
+        android.util.Log.i("couchtv", "home page let go while away")
+        web = null; ready = false
+        val renderer = if (android.os.Build.VERSION.SDK_INT >= 29) w.webViewRenderProcess else null
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        w.destroy()
+        // The renderer process holds most of the memory: end it too (Android 10 and later can).
+        if (android.os.Build.VERSION.SDK_INT >= 29) renderer?.terminate()
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
@@ -95,6 +152,8 @@ class HomeActivity : Activity() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= TRIM_MEMORY_RUNNING_LOW) js("window.tv && tv.lowMemory && tv.lowMemory()")
+        // Away and Android is short of memory: let the page go now rather than after the wait.
+        if (!shown && level >= TRIM_MEMORY_MODERATE) { main.removeCallbacks(release); releaseIfAway() }
     }
 
     // Behind Netflix the page's clock, slider and fetches stop, so the app in front gets the CPU.
@@ -147,5 +206,8 @@ class HomeActivity : Activity() {
 
     companion object {
         private val GROUND = Color.parseColor("#0D0C0B")
+        private const val RELEASE_AFTER = 10 * 60_000L
+        // In front but not an app you watch: Android's own screens and settings over the home screen.
+        private val NOT_AN_APP = setOf("android", "com.android.systemui", "com.android.tv.settings")
     }
 }

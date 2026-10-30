@@ -13,9 +13,13 @@
 
   if (!window.TVOS) { window.HOME_READY = Promise.resolve(); return; }
 
-  var apps = JSON.parse(window.TVOS.apps()).map(function (a) {
-    return { package: a.package, name: NAMES[a.package] || a.label, banner: "http://tvos.invalid/banner/" + a.package };
-  }).sort(function (a, b) { return rank(a.package) - rank(b.package) || a.name.localeCompare(b.name); });
+  // The TV's apps now (the app keeps the list, so asking again on each return is cheap).
+  window.HOME_APPS = function () {
+    return JSON.parse(window.TVOS.apps()).map(function (a) {
+      return { package: a.package, name: NAMES[a.package] || a.label, banner: "http://tvos.invalid/banner/" + a.package };
+    }).sort(function (a, b) { return rank(a.package) - rank(b.package) || a.name.localeCompare(b.name); });
+  };
+  var apps = window.HOME_APPS();
 
   function load(tries) {
     return fetch("/api/home-data").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -32,10 +36,20 @@
   // data (a second or more away on a cold start) replaces it through window.HOME_FRESH.
   var last = null;
   try { last = JSON.parse(localStorage.getItem("couch:home") || "null"); } catch (e) {}
-  var fresh = load(4).then(function (d) {
+  var fresh = load(4).then(keep);
+  function keep(d) {
     if (d.rows && d.rows.length) try { localStorage.setItem("couch:home", JSON.stringify(d)); } catch (e) {}
     return d;
-  });
+  }
+  // Later, while the page stays up (home.js asks a few times a day): fresh data, swapped in where it changed.
+  // True when it arrived.
+  window.HOME_REFETCH = function () {
+    return load(0).then(keep).then(function (d) {
+      if (!d.rows || !d.rows.length || !window.HOME_FRESH) return false;
+      window.HOME_FRESH(shape(d), d.aerials || []);
+      return true;
+    });
+  };
   if (last && last.rows) {
     window.HOME_DATA = shape(last); window.AERIALS = last.aerials || [];
     window.HOME_READY = Promise.resolve();

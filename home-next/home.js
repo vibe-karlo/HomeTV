@@ -70,6 +70,19 @@ window.HOME_READY.then(function () {
     m.drawImage(img, 0, 0, 320, 180);
     frostHosts.forEach(paintHost);
   }
+  // The glass from the picture's bytes (already in the cache), decoded and shrunk off the page's main thread,
+  // so the crossfade that starts with it never stalls. A video frame is shrunk as it is grabbed.
+  // Where that cannot be done: from the picture itself, as before.
+  var frostJob = 0;
+  function frostFrom(url, img) {
+    var job = ++frostJob;
+    var shrink = function (src) { return createImageBitmap(src, { resizeWidth: 320, resizeHeight: 180, resizeQuality: "high" }); };
+    var ours = url && new URL(url, location.href).origin === location.origin;   // on the TV every picture is served by the TV app
+    var bmp = !window.createImageBitmap || (url && !ours) ? Promise.reject()
+      : url ? fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(shrink) : shrink(img);
+    bmp.then(function (b) { if (job === frostJob) paintFrost(b); if (b.close) b.close(); },
+      function () { if (job === frostJob && img) paintFrost(img); });
+  }
   // A panel that is hidden (settings closed, no forecast) waits: it is painted from the last picture when it shows.
   function frostHidden(f) {
     return f.host.hidden || f.host.offsetParent === null || (f.host.id === "forecast" && !document.body.classList.contains("forecast"));
@@ -103,13 +116,34 @@ window.HOME_READY.then(function () {
   var cacheOrder = [];
   function load(url) {
     if (!cache[url]) {
-      cache[url] = new Promise(function (res, rej) {
-        var i = new Image(); i.decoding = "async"; i.onload = function () { res(i); }; i.onerror = rej; i.src = url;
+      // Decoded before it is used, so the crossfade it starts never waits on a decode. A page that is not
+      // drawing (behind another app) never finishes a decode: then it is used as soon as it has loaded.
+      var p = cache[url] = new Promise(function (res, rej) {
+        var i = new Image(); i.decoding = "async";
+        i.onload = function () {
+          var done = function () { if (!p.ready) { p.ready = true; res(i); } };
+          if (i.decode) i.decode().then(done, done);
+          setTimeout(done, i.decode ? 1200 : 0);
+        };
+        i.onerror = rej; i.src = url;
       });
       cacheOrder.push(url);
       while (cacheOrder.length > 6) delete cache[cacheOrder.shift()];
     }
     return cache[url];
+  }
+  // Whether a card's logo exists: loaded once, not kept among the hero's few remembered pictures.
+  function probe(url) { return new Promise(function (res, rej) { var i = new Image(); i.onload = res; i.onerror = rej; i.src = url; }); }
+  // The slider's next show loads and decodes while this one is up, once this one's fade has settled.
+  var prepTimer = null;
+  function prepareNext(item) {
+    clearTimeout(prepTimer);
+    prepTimer = setTimeout(function () {
+      if (!item || document.hidden) return;
+      var big = item.kind === "live" ? item.bg : art(item.bg, 1280), logo = item.kind === "live" ? null : art(item.logo, 640);
+      if (big) load(big).catch(function () {});
+      if (logo) load(logo).catch(function () {});
+    }, 4000);
   }
 
   // ---------------------------------------------------------------- live sport (F1, NK Osijek) at the top
@@ -165,7 +199,7 @@ window.HOME_READY.then(function () {
         var next = heroLayers[1 - heroCur];
         next.style.backgroundImage = "url(" + item.bg + ")";
         next.classList.add("on"); heroLayers[heroCur].classList.remove("on"); heroCur = 1 - heroCur;
-        paintFrost(img);
+        frostFrom(item.bg, img);
         showLive(item);
       }, function () { if (tok === heroToken) showLive(item); });
       return;
@@ -173,7 +207,9 @@ window.HOME_READY.then(function () {
     heroItem = item;
     var token = ++heroToken;
     // The card's own 480 px picture is already loaded: show it at once, then the 1280 px one over it.
-    var big = art(item.bg, 1280), bg = TV && item.bg && item.bg.charAt(0) !== "/" ? art(item.bg, 480) : big, logo = art(item.logo, 640);
+    // The slider's next show got its 1280 px one ready beforehand: that one straight away, no sharpening mid-fade.
+    var big = art(item.bg, 1280), small = TV && item.bg && item.bg.charAt(0) !== "/" ? art(item.bg, 480) : big, logo = art(item.logo, 640);
+    var bg = cache[big] && cache[big].ready ? big : small;
     Promise.all([bg ? load(bg) : Promise.resolve(null), logo ? load(logo).catch(function () { return null; }) : null]).then(function (r) {
       if (token !== heroToken) return;
       var next = heroLayers[1 - heroCur];
@@ -181,7 +217,7 @@ window.HOME_READY.then(function () {
       if (r[0] && big !== bg) load(big).then(function () { if (token === heroToken) next.style.backgroundImage = "url(" + big + ")"; }, function () {});
       next.classList.remove("drift"); void next.offsetWidth; next.classList.add("drift");
       next.classList.add("on"); heroLayers[heroCur].classList.remove("on"); heroCur = 1 - heroCur;
-      if (r[0]) paintFrost(r[0]);
+      if (r[0]) frostFrom(small, r[0]);
       stage.classList.add("swap");
       setTimeout(function () {
         if (token !== heroToken) return;
@@ -266,39 +302,50 @@ window.HOME_READY.then(function () {
       return !(it.genres || []).some(function (g) { return prefs.hiddenGenres.indexOf(g) >= 0; });
     }).slice(0, 16);
   }
+  // A row that did not change keeps its cards and their pictures: back from Netflix, only Continue Watching is drawn again.
   function buildRows() {
-    rowsEl.textContent = "";
+    var before = {};
+    rows.forEach(function (r) { before[r.id] = r; });
     rows = DATA.rows.map(function (r) { return { def: r, items: shown(r) }; }).filter(function (x) { return x.items.length; })
-      .map(function (x, ri) {
-        var row = document.createElement("section"); row.className = "row";
-        row.innerHTML = "<h2></h2>"; row.querySelector("h2").textContent = x.def.title;
-        var track = document.createElement("div"); track.className = "track"; row.appendChild(track);
-        var cards = x.items.map(function (it, ci) {
-          var c = document.createElement("div"); c.className = "card focusable";
-          var p = it.progress ? '<span class="progress"><i style="width:' + Math.round(it.progress * 100) + '%"></i></span>' : "";
-          if (p) c.classList.add("has-progress");
-          // An app's own picture usually carries its title already (Netflix, MAXtv): show it clean, named by the caption.
-          var own = fromApp(it) && !!it.bg;
-          if (own) c.classList.add("own-art");
-          c.innerHTML = '<span class="scrim"></span><span class="logo"></span>' + p +
-            '<span class="dim"></span><span class="sheen"></span><span class="caption"></span>';
-          c.querySelector(".caption").textContent = (it.episode ? it.title + " · " + it.episode : it.title + (it.year ? " · " + it.year : "")) +
-            (it.rating ? " · IMDb " + it.rating : "");
-          var logo = art(it.logo, 320);
-          (logo ? load(logo) : Promise.reject()).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
-            if (own) return;
-            var f = document.createElement("span"); f.className = "fallback"; f.textContent = it.title; c.insertBefore(f, c.querySelector(".dim"));
-            // An app's card with no picture still says where it plays.
-            if (fromApp(it) && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }
-          });
-          c.addEventListener("click", function () { pointer("rows", ri, ci); });
-          track.appendChild(c);
-          return c;
-        });
-        rowsEl.appendChild(row);
-        return { id: x.def.id, el: row, track: track, cards: cards, items: x.items, col: 0, painted: 0 };
+      .map(function (x) {
+        var sig = JSON.stringify([x.def.title, x.items]), old = before[x.def.id];
+        if (old && old.sig === sig) { delete before[x.def.id]; return old; }
+        return makeRow(x.def, x.items, sig, old);
       });
+    Object.keys(before).forEach(function (id) { rowsEl.removeChild(before[id].el); });
+    // Into place, moving only rows that are not there already.
+    var at = rowsEl.firstChild;
+    rows.forEach(function (r) { if (r.el === at) at = at.nextSibling; else rowsEl.insertBefore(r.el, at); });
     st.row = Math.min(st.row, Math.max(0, rows.length - 1));
+  }
+  function makeRow(def, items, sig, old) {
+    var row = { id: def.id, sig: sig, items: items, col: old ? Math.min(old.col, items.length - 1) : 0, painted: 0 };
+    row.el = document.createElement("section"); row.el.className = "row";
+    row.el.innerHTML = "<h2></h2>"; row.el.querySelector("h2").textContent = def.title;
+    var track = row.track = document.createElement("div"); track.className = "track"; row.el.appendChild(track);
+    row.cards = items.map(function (it, ci) {
+      var c = document.createElement("div"); c.className = "card focusable";
+      var p = it.progress ? '<span class="progress"><i style="width:' + Math.round(it.progress * 100) + '%"></i></span>' : "";
+      if (p) c.classList.add("has-progress");
+      // An app's own picture usually carries its title already (Netflix, MAXtv): show it clean, named by the caption.
+      var own = fromApp(it) && !!it.bg;
+      if (own) c.classList.add("own-art");
+      c.innerHTML = '<span class="scrim"></span><span class="logo"></span>' + p +
+        '<span class="dim"></span><span class="sheen"></span><span class="caption"></span>';
+      c.querySelector(".caption").textContent = (it.episode ? it.title + " · " + it.episode : it.title + (it.year ? " · " + it.year : "")) +
+        (it.rating ? " · IMDb " + it.rating : "");
+      var logo = art(it.logo, 320);
+      (logo ? probe(logo) : Promise.reject()).then(function () { c.querySelector(".logo").style.backgroundImage = "url(" + logo + ")"; }, function () {
+        if (own) return;
+        var f = document.createElement("span"); f.className = "fallback"; f.textContent = it.title; c.insertBefore(f, c.querySelector(".dim"));
+        // An app's card with no picture still says where it plays.
+        if (fromApp(it) && !it.bg) { var a = document.createElement("small"); a.textContent = it.service; f.insertBefore(a, f.firstChild); }
+      });
+      c.addEventListener("click", function () { pointer("rows", rows.indexOf(row), ci); });
+      track.appendChild(c);
+      return c;
+    });
+    return row;
   }
 
   // Only rows near the focus get their artwork, so a small TV never holds every backdrop at once.
@@ -354,7 +401,6 @@ window.HOME_READY.then(function () {
     // In browse the focused row sits just under the hero info; on the dock only card tops peek.
     var y = st.zone === "rows" ? 560 - (990 + st.row * 392) : 0;
     if (scroller.drawn !== y) { scroller.drawn = y; scroller.style.transform = "translateY(" + y + "px)"; }
-    if (rows.length) rows[0].el.querySelector("h2").style.opacity = st.zone === "rows" ? "" : "0";
     paintNear(st.zone === "rows" ? st.row : 0);
     frostCatchUp();
 
@@ -425,7 +471,7 @@ window.HOME_READY.then(function () {
     // The glass follows the video: a tiny frame every 8 s, crossfaded (each grab reads the video back on the main thread).
     aerial.frostTimer = setInterval(function () {
       var cv = aerial.vids[aerial.cur];
-      if (cv.readyState >= 2) paintFrost(cv);
+      if (cv.readyState >= 2) frostFrom(null, cv);
     }, 8000);
   }
   function setBackground(mode) {
@@ -447,7 +493,11 @@ window.HOME_READY.then(function () {
     var pool = heroPool(), here = -1;
     for (var i = 0; i < pool.length && heroItem; i++) if (pool[i] === heroItem || (pool[i].id && pool[i].id === heroItem.id)) { here = i; break; }
     if (here >= 0) { rotateIdx = here; heroItem = pool[here]; } else { rotateIdx = 0; setHero(pool[0]); }
-    rotateTimer = setInterval(function () { rotateIdx = (rotateIdx + 1) % pool.length; setHero(pool[rotateIdx]); }, TV ? 15000 : 9000);
+    prepareNext(pool[(rotateIdx + 1) % pool.length]);
+    rotateTimer = setInterval(function () {
+      rotateIdx = (rotateIdx + 1) % pool.length; setHero(pool[rotateIdx]);
+      prepareNext(pool[(rotateIdx + 1) % pool.length]);
+    }, TV ? 15000 : 9000);
   }
 
   var moving = false;
@@ -699,7 +749,7 @@ window.HOME_READY.then(function () {
   };
 
   // What the TV app calls: the remote's Back, the Home button, and coming back to the home screen.
-  var loadedAt = Date.now();
+  var freshAt = Date.now();
   window.tv = {
     back: function () { if (window.Settings && window.Settings.isOpen()) window.Settings.key("Escape"); else back(); },
     home: function () {
@@ -709,13 +759,25 @@ window.HOME_READY.then(function () {
     // Android says memory is low: forget remembered pictures; what is on screen stays.
     lowMemory: function () { cache = {}; cacheOrder = []; unpaintFar(st.zone === "rows" ? st.row : 0, 0); },
     resume: function () {
-      if (Date.now() - loadedAt > 3 * 3600e3) { location.reload(); return; }   // fresh shows a few times a day
+      syncApps();
       paintNear(st.zone === "rows" ? st.row : 0);   // the pictures let go while away
       followFocus();
-      refreshContinue();
+      // Fresh shows a few times a day, swapped in where they changed: the page itself stays up, so Home is instant.
+      if (Date.now() - freshAt > 3 * 3600e3 && window.HOME_REFETCH) {
+        freshAt = Date.now();
+        window.HOME_REFETCH().then(function (ok) { if (!ok) refreshContinue(); });
+      } else refreshContinue();
       refreshWeather();
     }
   };
+  // An app installed or removed while away: the dock follows (the page no longer reloads to find out).
+  function syncApps() {
+    if (!window.HOME_APPS) return;
+    var now = window.HOME_APPS(), key = function (l) { return l.map(function (a) { return a.package + "=" + a.name; }).join(); };
+    if (key(now) === key(DATA.apps)) return;
+    DATA.apps.length = 0; Array.prototype.push.apply(DATA.apps, now);   // the same list Settings reads
+    buildDock(); render();
+  }
   // The fresh data after a start from the kept copy: swap it in, keeping the row in focus.
   window.HOME_FRESH = function (d, aerials) {
     DATA.sport = d.sport; DATA.tvnow = d.tvnow; DATA.address = d.address; DATA.port = d.port; DATA.version = d.version;
@@ -754,7 +816,7 @@ window.HOME_READY.then(function () {
   // Behind another app: stop the slider and forget the decoded pictures (megabytes each on this 2 GB TV).
   addEventListener("visibilitychange", function () {
     if (!document.hidden) return;
-    clearInterval(rotateTimer); aerialActive(false); cache = {}; cacheOrder = [];
+    clearInterval(rotateTimer); clearTimeout(prepTimer); aerialActive(false); cache = {}; cacheOrder = [];
     // Give the aerial's hardware video decoder back: Netflix may need it, and it holds tens of MB.
     var v = aerial.vids[aerial.cur];
     if (aerial.clip && v.getAttribute("src")) { aerial.at = v.currentTime; v.removeAttribute("src"); v.load(); }

@@ -256,6 +256,7 @@ body.browse #dock { opacity: 0; }
   font-size: 30px; font-weight: 600; color: var(--ink-2); transition: color 300ms var(--ease);
 }
 .row.active h2 { color: var(--ink); }
+body:not(.browse) .row:first-child h2 { opacity: 0; }   /* on the dock only the first row's card tops peek, untitled */
 .track {
   position: absolute; left: var(--gutter); top: 62px; display: flex; gap: 34px;
   transition: transform 450ms var(--ease); will-change: transform;
