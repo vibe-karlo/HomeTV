@@ -833,6 +833,8 @@ window.HOME_READY.then(function () {
   placeFrost();
   refreshWeather();
   document.body.classList.toggle("aerial", aerial.on);
+  // Keys pressed before the page was ready were the WebView's: let go of whatever it focused with them.
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   render();
   // Fresh data that arrived before this page was ready.
   if (window.HOME_PENDING) { window.HOME_FRESH.apply(null, window.HOME_PENDING); window.HOME_PENDING = null; }

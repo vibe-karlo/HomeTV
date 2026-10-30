@@ -14,6 +14,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Focus is drawn by the page (.focus). A key pressed while a fresh page loads can land the WebView's own focus
+   on a button: its orange ring never shows. */
+:focus, :focus-visible { outline: none; }
 html, body { margin: 0; height: 100%; background: var(--floor); overflow: hidden; }
 body { font-family: "Switzer", system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
 
