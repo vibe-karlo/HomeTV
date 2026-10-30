@@ -207,7 +207,7 @@ object Finder {
         val item = JSONObject().put("title", t.title).put("year", t.year ?: JSONObject.NULL).put("type", t.type)
             .put("poster", t.poster ?: JSONObject.NULL).put("backdrop", t.backdrop ?: JSONObject.NULL).put("service", app.id)
             .put("season", s ?: JSONObject.NULL).put("episode", e ?: JSONObject.NULL).put("episode_title", ep?.name ?: JSONObject.NULL)
-            .put("package", app.pkg).put("started", now)
+            .put("package", app.pkg).put("started", now).put("at", System.currentTimeMillis())
         Now.playedItem = item
         Store.addHistory(JSONObject(item.toString()).put("who", who ?: Now.who ?: JSONObject.NULL).put("when", now).put("method", method))
         Now.push()

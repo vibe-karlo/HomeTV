@@ -62,11 +62,10 @@ object Media {
         val c = session(front) ?: return null
         val md = c.metadata
         val ps = c.playbackState ?: return null
-        // Netflix plays with no metadata at all: then what it last put in Watch Next (what you are watching),
-        // else the app's own name, so the phone still gets the card and its controls.
+        // Netflix plays with no metadata at all: then the likeliest guess (see guess), else the app's own name,
+        // so the phone still gets the card and its controls.
         val wn = if (md?.getString(MediaMetadata.METADATA_KEY_TITLE).isNullOrBlank() && md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).isNullOrBlank())
-            runCatching { WatchNext.items().filter { it.optString("package") == c.packageName }.maxByOrNull { it.optLong("at") } }.getOrNull()
-                ?.takeIf { System.currentTimeMillis() - it.optLong("at") < 6 * 3600_000L } else null   // only a recent one is likely what plays
+            guess(c.packageName) else null
         val title = md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() }
             ?: wn?.optString("title")?.takeIf { it.isNotBlank() }
@@ -74,7 +73,7 @@ object Media {
         val sub = md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_ARTIST)?.takeIf { it.isNotBlank() }
             ?: md?.getString(MediaMetadata.METADATA_KEY_ALBUM)?.takeIf { it.isNotBlank() }
-            ?: wn?.let { listOf(it.optString("episode"), it.optString("episode_title")).filter { s -> s.isNotBlank() }.joinToString(" · ").ifEmpty { null } }
+            ?: wn?.optString("sub")?.takeIf { it.isNotBlank() }
         val state = when (ps.state) {
             PlaybackState.STATE_PLAYING, PlaybackState.STATE_FAST_FORWARDING, PlaybackState.STATE_REWINDING -> "playing"
             PlaybackState.STATE_PAUSED -> "paused"
@@ -103,11 +102,35 @@ object Media {
             .put("state", state).put("position_ms", if (pos >= 0) pos else JSONObject.NULL)
             .put("duration_ms", if (dur > 0) dur else JSONObject.NULL)
             .put("art", if (artBytes != null) "/now/art?k=" + Integer.toHexString(key.hashCode())
-                else wn?.optString("bg")?.takeIf { it.startsWith("/watchnext/art/") }?.let { "$it?k=1" } ?: JSONObject.NULL)
+                else wn?.optString("art")?.takeIf { it.isNotEmpty() } ?: JSONObject.NULL)
             .put("can", can).put("source", "session")
     }
 
     fun art(): ByteArray? = artBytes
+
+    /**
+     * What an app that names nothing (Netflix) is most likely playing, as couch-tv did it: what HomeTV itself
+     * last opened in that app, or what the app last put in Watch Next, whichever is newer and from the last 6 hours
+     * (an older one is likely not what plays). Gives title, sub (the episode), art (a picture the phone can load), at.
+     */
+    private fun guess(pkg: String): JSONObject? {
+        val since = System.currentTimeMillis() - 6 * 3600_000L
+        val text = { o: JSONObject, k: String -> o.optString(k).takeIf { it.isNotBlank() && it != "null" } }
+        val opened = Now.playedItem?.takeIf { it.optString("package") == pkg && it.optLong("at") > since }?.let { o ->
+            val s = o.optInt("season"); val e = o.optInt("episode")
+            val ep = if (s > 0 && e > 0) "S$s E$e" else text(o, "episode")
+            val pic = text(o, "art")?.let { "$it?k=1" }
+                ?: (text(o, "backdrop") ?: text(o, "poster"))?.let { "/img?w=480&u=" + java.net.URLEncoder.encode(it, "UTF-8") }
+            JSONObject().put("title", text(o, "title")).put("sub", listOfNotNull(ep, text(o, "episode_title")).joinToString(" · "))
+                .put("art", pic ?: "").put("at", o.optLong("at"))
+        }
+        val listed = runCatching { WatchNext.items().filter { it.optString("package") == pkg }.maxByOrNull { it.optLong("at") } }.getOrNull()
+            ?.takeIf { it.optLong("at") > since }?.let { w ->
+                JSONObject().put("title", text(w, "title")).put("sub", listOfNotNull(text(w, "episode"), text(w, "episode_title")).joinToString(" · "))
+                    .put("art", text(w, "bg")?.takeIf { it.startsWith("/watchnext/art/") }?.let { "$it?k=1" } ?: "").put("at", w.optLong("at"))
+            }
+        return listOfNotNull(opened, listed).maxByOrNull { it.optLong("at") }
+    }
 
     /**
      * play, pause, toggle, next, previous, forward, back (10 s; 30 s with "long"). Through the

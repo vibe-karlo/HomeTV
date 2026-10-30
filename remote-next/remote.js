@@ -29,9 +29,11 @@
     // Ambilight: the screen with its light spilling out on three sides.
     ambilight: S('<rect x="8" y="9" width="12" height="9" rx="1.6"/><path d="M14 4.5v1.8M8.6 5.8l.9 1.5M19.4 5.8l-.9 1.5M3.8 13.5h2M22.2 13.5h2M4.4 9.2l1.7.9M23.6 9.2l-1.7.9M11 22h6"/>'),
     check: S('<path d="m7 14.5 4.5 4.5L21 9.5"/>'),
+    channel_up: S('<path d="m8 17 6-6 6 6"/>'),
+    channel_down: S('<path d="m8 11 6 6 6-6"/>'),
     apps: S('<rect x="4.5" y="4.5" width="8" height="8" rx="2"/><rect x="15.5" y="4.5" width="8" height="8" rx="2"/><rect x="4.5" y="15.5" width="8" height="8" rx="2"/><rect x="15.5" y="15.5" width="8" height="8" rx="2"/>')
   };
-  document.querySelectorAll("#keys button").forEach(function (b) { b.innerHTML = ICON[b.dataset.key || b.dataset.vol]; });
+  document.querySelectorAll("#keys button, #chan button").forEach(function (b) { b.innerHTML = ICON[b.dataset.key || b.dataset.vol]; });
   $("power").innerHTML = ICON.power;
   $("kbd-open").innerHTML = ICON.keyboard;
   $("apps-open").innerHTML = ICON.apps;
@@ -104,20 +106,37 @@
 
   // ---------------------------------------------------------------- live state
 
-  var state = { power: "on", keyboard: false };
+  var state = { power: "on", keyboard: false }, what = "";
+  // Live TV apps get the channel rocker.
+  var LIVE = { "hr.telekom.android.maxtvp": 1, "uc.flex.hr.smarttv": 1, "org.droidtv.playtv": 1 };
   function onNow(n) {
     state.power = n.power;
     $("now-app").textContent = n.power === "off" ? "Philips TV" : (n.app && n.app.id !== "home" ? n.app.name : "Home");
     // With the playing card showing, the bar only says whether it plays; the card has the title.
     var p = n.playing, card = p && p.state && p.state !== "stopped" && n.power !== "off";
-    var what = n.power === "off" ? "Off" : card ? (p.state === "paused" ? "Paused" : p.state === "buffering" ? "Loading" : "Playing") : "Philips TV";
-    $("now-what").textContent = what;
+    what = n.power === "off" ? "Off" : card ? (p.state === "paused" ? "Paused" : p.state === "buffering" ? "Loading" : "Playing") : "Philips TV";
     $("power").classList.toggle("off", n.power === "off");
+    $("chan").hidden = !(n.power !== "off" && n.app && LIVE[n.app.package]);
+    showVolume(n.power === "off" ? null : n.volume);
+    drawWhat();
     showPlaying(n.power === "off" ? null : p);
     if (n.keyboard && !state.keyboard) openKbd(true);
     if (!n.keyboard && state.keyboard && kbd.auto) closeKbd();
     state.keyboard = !!n.keyboard;
   }
+  // A volume change shows in the bar for a moment, as the TV reports it. With some soundbars the TV
+  // cannot say its level: then nothing shows.
+  var level = { said: null, until: 0, timer: null };
+  function showVolume(v) {
+    if (!v || !v.known) return;
+    var now = v.muted ? "Muted" : "Volume " + v.level;
+    if (level.said !== null && now !== level.said) {
+      level.until = Date.now() + 2000;
+      clearTimeout(level.timer); level.timer = setTimeout(drawWhat, 2050);
+    }
+    level.said = now;
+  }
+  function drawWhat() { $("now-what").textContent = Date.now() < level.until ? level.said : what; }
   // Reconnects quickly first (a blip on the Wi-Fi), then backs off to 3 s while the TV is away.
   var retry = 0, retryT = null, heard = 0;
   function listen() {
@@ -214,6 +233,8 @@
 
   var pad = $("pad"), dot = $("pad-touch");
   var g = null, FIRST = 34, NEXT = 46, HOLD = 560;
+  // Swipe and keep the finger down: it keeps moving that way until you lift (or swipe another way).
+  var REPEAT_AFTER = 380, REPEAT_EVERY = 170;
   try { if (localStorage.getItem("couch:padUsed")) pad.classList.add("used"); } catch (e) {}
 
   function place(e) {
@@ -235,10 +256,16 @@
     clearTimeout(g.timer);
     g.moved++; g.ax = e.clientX; g.ay = e.clientY;
     tick(); key(dir);
+    clearTimeout(g.rep); g.dir = dir;
+    g.rep = setTimeout(function again() {
+      if (!g) return;
+      pad.classList.add("repeating"); tick(); key(g.dir);
+      g.rep = setTimeout(again, REPEAT_EVERY);
+    }, REPEAT_AFTER);
   });
   function end(e) {
     if (!g) return;
-    clearTimeout(g.timer);
+    clearTimeout(g.timer); clearTimeout(g.rep); pad.classList.remove("repeating");
     var tap = !g.moved && !g.held && e.type === "pointerup" && e.timeStamp - g.t < 400;
     if (tap) { pad.classList.add("pressed"); tick(); key("ok"); }
     if (g.moved || tap) { pad.classList.add("used"); try { localStorage.setItem("couch:padUsed", "1"); } catch (x) {} }
@@ -250,7 +277,7 @@
 
   // ---------------------------------------------------------------- buttons (volume repeats while held)
 
-  document.querySelectorAll("#keys button").forEach(function (b) {
+  document.querySelectorAll("#keys button, #chan button").forEach(function (b) {
     var rep = null;
     var fire = function () {
       tick();
@@ -485,7 +512,8 @@
 
   // ---------------------------------------------------------------- preview stand-in for the TV
 
-  var mockNow = { power: "on", app: { id: "netflix", name: "Netflix" }, keyboard: false,
+  var mockNow = { power: "on", app: { id: "netflix", name: "Netflix", package: "com.netflix.ninja" }, keyboard: false,
+    volume: { level: 14, max: 60, muted: false, known: true },
     playing: { title: "The Gentlemen", subtitle: "S2 E3 · Tiger, Tiger", state: "playing", position_ms: 1384000, duration_ms: 3340000,
       can: { toggle: true, seek: true, next: true, previous: false } } };
   var mockLog = [];
@@ -493,6 +521,11 @@
     mockLog.push(path + " " + JSON.stringify(body || {}));
     window.__sent = mockLog;
     if (path === "/api/power") { mockNow.power = "off"; setTimeout(function () { onNow(mockNow); }, 300); }
+    if (path === "/api/volume") {
+      var v = mockNow.volume;
+      if (body.action === "mute") v.muted = !v.muted; else { v.muted = false; v.level = Math.max(0, Math.min(v.max, v.level + (body.action === "up" ? 1 : -1))); }
+      setTimeout(function () { onNow(mockNow); }, 350);
+    }
     return new Promise(function (res) { setTimeout(function () { res({ ok: true }); }, 30); });
   }
   if (MOCK) {
@@ -500,6 +533,12 @@
     addEventListener("keyup", function (e) {   // keyup, so the K itself never lands in the field
       if (e.target === kbd.input) return;
       if (e.key === "k" || e.key === "K") { mockNow.keyboard = !mockNow.keyboard; onNow(mockNow); }
+      // L: a live TV app in front (MAXtv), for the channel rocker.
+      if (e.key === "l" || e.key === "L") {
+        mockNow.app = mockNow.app.package === "com.netflix.ninja" ? { id: "maxtv", name: "MAXtv", package: "hr.telekom.android.maxtvp" }
+          : { id: "netflix", name: "Netflix", package: "com.netflix.ninja" };
+        onNow(mockNow);
+      }
     });
   }
 

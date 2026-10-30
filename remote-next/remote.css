@@ -84,6 +84,23 @@ svg { display: block; }
   font-size: 15px; font-weight: 500; color: rgba(246, 243, 238, 0.46); transition: opacity 400ms var(--ease);
 }
 #pad.used #pad-hint { opacity: 0; }
+/* Held after a swipe, it keeps going: the touch grows a little while it repeats. */
+#pad.repeating #pad-touch { transform: scale(1.14); background: rgba(246, 243, 238, 0.13); }
+
+/* ---------------------------------------------------------------- channel rocker */
+
+#chan {
+  display: flex; align-items: center; height: 64px; border-radius: 24px;
+  background: var(--surface); box-shadow: var(--edge);
+}
+#chan[hidden] { display: none; }
+#chan button {
+  flex: 1; height: 100%; border-radius: 24px; display: grid; place-items: center;
+  transition: background-color 120ms var(--ease);
+}
+#chan button svg { width: 28px; height: 28px; }
+#chan button:active { background: var(--surface-hi); }
+#chan span { flex: none; padding: 0 8px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 
 /* ---------------------------------------------------------------- keys */
 

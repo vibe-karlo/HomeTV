@@ -15,8 +15,20 @@ import java.util.concurrent.TimeUnit
  */
 object Now {
     @Volatile var who: String? = null
-    @Volatile var playedItem: JSONObject? = null          // the last thing /api/play started
+    @Volatile var playedItem: JSONObject? = null          // the last thing HomeTV opened (a show, a Continue Watching card)
     @Volatile var sleepEnds: Long? = null
+
+    /**
+     * A card opened from the home screen (Continue Watching, an app's row): the app it opened in will most
+     * likely play it, which is all there is to go on when the app names nothing (Netflix).
+     */
+    fun opened(card: JSONObject, pkg: String) {
+        val title = card.optString("title").trim()
+        if (title.isEmpty() || pkg.isEmpty()) return
+        playedItem = JSONObject().put("title", title).put("episode", card.optString("episode")).put("episode_title", card.optString("episode_title"))
+            .put("art", card.optString("bg").takeIf { it.startsWith("/watchnext/art/") || it.startsWith("/approws/art/") } ?: JSONObject.NULL)
+            .put("package", pkg).put("started", iso()).put("at", System.currentTimeMillis())
+    }
     @Volatile var front: String? = null
         private set
     @Volatile private var media: JSONObject? = null
@@ -64,6 +76,13 @@ object Now {
     fun push() {
         val msg = payload().toString()
         listeners.forEach { runCatching { it(msg) } }
+    }
+
+    private val soonQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    /** A change the TV shows a moment after the press (volume): one fresh look then, however many presses came in between. */
+    fun soon() {
+        if (!started) { push(); return }
+        if (soonQueued.compareAndSet(false, true)) loop.schedule({ soonQueued.set(false); lastSig = ""; tick() }, 350, TimeUnit.MILLISECONDS)
     }
 
     /** Every 4 s, while a phone listens: front app, power, volume and what is playing. */

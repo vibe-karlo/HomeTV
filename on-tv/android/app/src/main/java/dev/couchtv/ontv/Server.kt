@@ -143,11 +143,11 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "POST /api/continue/remove" -> { val b = body(s); Shows.forget(b.optString("id"), b.optLong("at")); json(200, ok()) }
             // Continue Watching again, when the home screen comes back from an app.
             "GET /api/continue-row" -> json(200, ok().put("row", Shows.continueRow()).put("watchNext", WatchNext.allowed()))
-            "POST /api/watchnext/open" -> json(200, WatchNext.open(body(s).optString("id")))
+            "POST /api/watchnext/open" -> body(s).let { b -> json(200, WatchNext.open(b.optString("id")).also { Now.opened(b, it.optString("opened")) }) }
             // App rows: every one there is (for Settings), the shown ones again, and opening a card.
             "GET /api/app-rows" -> json(200, ok().put("rows", AppRows.choices()).put("allowed", WatchNext.allowed()))
             "GET /api/app-rows/shown" -> { AppRows.stale(); json(200, ok().put("rows", AppRows.shown())) }
-            "POST /api/approw/open" -> json(200, AppRows.open(body(s).optString("id")))
+            "POST /api/approw/open" -> body(s).let { b -> json(200, AppRows.open(b.optString("id")).also { Now.opened(b, it.optString("opened")) }) }
             // Ambilight, through the TV's own Philips API (paired once with a PIN the TV shows).
             "GET /api/ambilight" -> json(200, ok(Philips.ambilight()))
             "POST /api/ambilight" -> json(200, ok(Philips.setAmbilight(body(s))))
@@ -236,8 +236,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
     private fun volume(b: JSONObject): Response {
         if (b.has("level")) Tv.setLevel(b.optInt("level"))
         else {
-            val code = mapOf("up" to "KEYCODE_VOLUME_UP", "down" to "KEYCODE_VOLUME_DOWN", "mute" to "KEYCODE_VOLUME_MUTE")[b.optString("action")]
-                ?: throw ApiError(400, "action must be up, down or mute, or send level")
+            val code = volumeCode(b.optString("action"))
             val steps = if (code.endsWith("MUTE")) 1 else b.optInt("steps", 1).coerceIn(1, 20)
             repeat(steps) { Tv.volumeKey(code); Thread.sleep(80) }
         }
@@ -245,6 +244,9 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         Now.push()
         return json(200, ok().put("volume", JSONObject(Tv.volume())))
     }
+
+    private fun volumeCode(action: String) = mapOf("up" to "KEYCODE_VOLUME_UP", "down" to "KEYCODE_VOLUME_DOWN", "mute" to "KEYCODE_VOLUME_MUTE")[action]
+        ?: throw ApiError(400, "action must be up, down or mute, or send level")
 
     private fun settings(): JSONObject = ok()
         // the TV home's own Home settings (language, place, look...), kept here as they come
@@ -304,7 +306,8 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 val m = JSONObject(frame.textPayload)
                 when {
                     m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold")); JSONObject().put("ok", true).put("key", m.getString("key")) }
-                    m.has("volume") -> { volume(JSONObject().put("action", m.getString("volume"))); JSONObject().put("ok", true) }
+                    // Pressed and answered at once (a held button sends one every 160 ms); the phones hear the new level a moment later.
+                    m.has("volume") -> { Tv.volumeKey(volumeCode(m.getString("volume"))); Now.soon(); JSONObject().put("ok", true) }
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
                     m.has("media") -> { Media.control(m.getString("media"), Now.front); JSONObject().put("ok", true) }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")
@@ -339,13 +342,21 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
     // The page's files change only when the app is installed again: that install's time is their version.
     private val stamp by lazy { "\"" + ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime.toString(36) + "\"" }
 
-    /** A file of the page: fonts and pictures kept for a while, the rest checked (a quick 304) on each load. */
+    /**
+     * A file of the page: fonts and pictures kept for a while, a file asked for with its build's ?v= kept for good
+     * (the next build asks with another v), the rest checked (a quick 304) on each load.
+     */
     private fun asset(path: String): Response = try {
-        val r = if (current.get()?.headers?.get("if-none-match") == stamp) newFixedLengthResponse(Response.Status.NOT_MODIFIED, mime(path), "")
+        val s = current.get()
+        val r = if (s?.headers?.get("if-none-match") == stamp) newFixedLengthResponse(Response.Status.NOT_MODIFIED, mime(path), "")
             else assets.open(path).use { it.readBytes() }.let { b -> newFixedLengthResponse(Response.Status.OK, mime(path), java.io.ByteArrayInputStream(b), b.size.toLong()) }
         r.apply {
             addHeader("ETag", stamp)
-            addHeader("Cache-Control", if (Regex("\\.(woff2|ttf|jpe?g|png|webp|svg)$").containsMatchIn(path)) "max-age=86400" else "no-cache")
+            addHeader("Cache-Control", when {
+                s?.parameters?.containsKey("v") == true -> "max-age=31536000, immutable"
+                Regex("\\.(woff2|ttf|jpe?g|png|webp|svg)$").containsMatchIn(path) -> "max-age=86400"
+                else -> "no-cache"
+            })
         }
     } catch (e: IOException) { newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found") }
 

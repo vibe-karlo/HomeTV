@@ -562,9 +562,11 @@ window.HOME_READY.then(function () {
     // Netflix when TMDB lists it there for Croatia, Stremio otherwise; an app's own card opens in that app.
     toast("Opening “" + it.title + "” in " + srcName(it));
     if (!TV) return;
+    // An app's card goes with its title, so the phone can say what plays when the app itself names nothing (Netflix).
     var wn = fromApp(it);
     fetch(it.kind === "watchnext" ? "/api/watchnext/open" : it.kind === "approw" ? "/api/approw/open" : "/api/open-show",
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wn ? { id: it.id } : it) })
+      { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(wn ? { id: it.id, title: it.title, episode: it.episode, episode_title: it.episode_title, bg: it.bg } : it) })
       .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) toast(d.error || "Could not open it"); }, function () { toast("Could not reach the TV app"); });
   }

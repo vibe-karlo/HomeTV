@@ -30,6 +30,10 @@ rsync -a --exclude 'preview-data.js' --exclude 'aerials.js' --exclude 'aerial-ca
 rsync -a "$ROOT/remote-next/" "$B/web/remote/"
 # Their script tags too, or the TV asks for three missing files before the page can start.
 sed -i '' -E -e '/preview-data\.js|aerials\.js|aerial-cache\.js/d' -e '/Preview data .left out/d' "$B/web/tv/index.html"
+# The phone keeps the remote's script and styles (the TV app serves a ?v= file for a year): opening the
+# remote then asks the TV only for the page itself. Each build gets a new v, so an update still arrives.
+V=$(date +%s)
+sed -i '' -E "s/(remote\.(css|js))\"/\1?v=$V\"/" "$B/web/remote/index.html"
 
 # Apple's aerial catalog, for the TV app to download from.
 mkdir -p "$ROOT/on-tv/android/app/src/main/assets"
