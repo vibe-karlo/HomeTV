@@ -181,7 +181,7 @@
       media(a);
       if (a === "toggle" && pl.item) {   // answer the press at once; the TV confirms a moment later
         pl.pos = position(); pl.at = Date.now();
-        pl.item.state = pl.item.state === "playing" ? "paused" : "playing"; drawToggle();
+        pl.item.state = pl.item.state === "playing" ? "paused" : "playing"; drawToggle(); lockScreen(pl.item);
       }
     });
   });
@@ -211,12 +211,12 @@
     var on = !!(p && p.state && p.state !== "stopped");   // controls even when the app names nothing
     $("playing").hidden = !on;
     clearInterval(pl.timer);
-    if (!on) { pl.item = null; return; }
+    if (!on) { pl.item = null; lockScreen(null); return; }
     var same = pl.item && pl.item.title === p.title;
     pl.item = p; pl.pos = p.position_ms; pl.at = Date.now();
     $("pl-title").textContent = p.title || $("now-app").textContent;
     $("pl-sub").textContent = p.subtitle || p.episode_title || "";
-    var art = $("pl-art"), url = p.art ? p.art + (MOCK ? "" : "&token=" + encodeURIComponent(token || "")) : p.package && !MOCK ? "/art/banner/" + p.package : null;
+    var art = $("pl-art"), url = artUrl(p);
     art.hidden = !url;
     if (url && !same) art.style.backgroundImage = "url(" + url + ")";
     var can = p.can || { toggle: true, seek: false, next: false, previous: false };
@@ -227,6 +227,81 @@
     });
     drawToggle(); drawTime();
     pl.timer = setInterval(drawTime, 1000);
+    lockScreen(p);
+  }
+  function artUrl(p) {
+    return p.art ? p.art + (MOCK ? "" : "&token=" + encodeURIComponent(token || "")) : p.package && !MOCK ? "/art/banner/" + p.package : null;
+  }
+
+  // ---------------------------------------------------------------- lock screen and Control Center
+
+  // iOS puts a web page in the lock screen player only while the page plays sound. So while the TV
+  // plays, the remote plays a silent loop and fills that player with the TV's show: title, episode,
+  // picture, position, and the buttons the app offers, which go to the TV like the card's do.
+  // A page may only start sound from a touch: the first touch anywhere allows it, after that the remote
+  // starts and stops the loop with the TV. It lasts while the remote is in the background; swiping the
+  // remote away ends it (iOS lets a page do nothing more without a paid app).
+  var ms = navigator.mediaSession, lock = { audio: null, ok: false, trying: false, key: "" };
+  function quiet() {   // 30 s of silence, 8 kHz 8-bit WAV (240 KB, made here instead of downloaded)
+    var n = 8000 * 30, b = new ArrayBuffer(44 + n), v = new DataView(b), at = 0;
+    var str = function (t) { for (var i = 0; i < t.length; i++) v.setUint8(at++, t.charCodeAt(i)); };
+    var u32 = function (x) { v.setUint32(at, x, true); at += 4; }, u16 = function (x) { v.setUint16(at, x, true); at += 2; };
+    str("RIFF"); u32(36 + n); str("WAVE"); str("fmt "); u32(16); u16(1); u16(1); u32(8000); u32(8000); u16(1); u16(8);
+    str("data"); u32(n);
+    new Uint8Array(b, 44).fill(128);
+    return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+  }
+  function unlock() {
+    if (!ms || lock.ok || lock.trying) return;
+    lock.trying = true;
+    if (!lock.audio) { lock.audio = new Audio(quiet()); lock.audio.loop = true; lock.audio.setAttribute("playsinline", ""); }
+    lock.audio.play().then(function () { lock.ok = true; lockScreen(pl.item); }, function () {})
+      .then(function () { lock.trying = false; });
+  }
+  document.addEventListener("pointerdown", unlock, true);
+  // A press on the lock screen. After a long while in the background the line to the TV may be gone:
+  // the press then goes by HTTP and a new line opens.
+  function fromLock(a) {
+    if (!MOCK && token && !wsOpen) reconnect();
+    tick(); media(a);
+    if (pl.item && (a === "play" || a === "pause")) {
+      pl.pos = position(); pl.at = Date.now(); pl.item.state = a === "play" ? "playing" : "paused";
+      drawToggle(); lockScreen(pl.item);
+    }
+  }
+  function act(name, on, a) {
+    try { ms.setActionHandler(name, on ? function () { fromLock(a); } : null); } catch (e) {}
+  }
+  function lockScreen(p) {
+    if (!ms || !lock.ok) return;
+    var au = lock.audio, on = !!(p && p.state && p.state !== "stopped" && state.power !== "off");
+    if (!on) {
+      if (!au.paused) au.pause();
+      ms.metadata = null; ms.playbackState = "none"; lock.key = "";
+      return;
+    }
+    var playing = p.state !== "paused";
+    if (playing && au.paused) au.play().catch(function () {});
+    if (!playing && !au.paused) au.pause();
+    ms.playbackState = playing ? "playing" : "paused";
+    var title = p.title || $("now-app").textContent, art = artUrl(p), k = [title, p.subtitle, art].join("|");
+    if (k !== lock.key) {
+      lock.key = k;
+      ms.metadata = new MediaMetadata({ title: title, artist: p.subtitle || p.episode_title || "", album: $("now-app").textContent,
+        artwork: art ? [{ src: new URL(art, location.href).href, sizes: "480x270", type: "image/jpeg" }] : [] });
+    }
+    var can = p.can || { toggle: true };
+    act("play", can.toggle !== false, "play");
+    act("pause", can.toggle !== false, "pause");
+    act("previoustrack", can.previous, "previous");
+    act("nexttrack", can.next, "next");
+    act("seekbackward", can.seek, "back");
+    act("seekforward", can.seek, "forward");
+    var pos = position(), d = p.duration_ms;
+    try {
+      if (pos != null && d) ms.setPositionState({ duration: d / 1000, position: Math.min(pos, d) / 1000, playbackRate: 1 });
+      else ms.setPositionState();
+    } catch (e) {}
   }
 
   // ---------------------------------------------------------------- touch pad
@@ -520,6 +595,11 @@
   function mock(method, path, body) {
     mockLog.push(path + " " + JSON.stringify(body || {}));
     window.__sent = mockLog;
+    if (path === "/api/media" && mockNow.playing && /^(play|pause|toggle)$/.test(body.action)) {
+      var mp = mockNow.playing;
+      mp.state = body.action === "toggle" ? (mp.state === "playing" ? "paused" : "playing") : body.action === "play" ? "playing" : "paused";
+      setTimeout(function () { onNow(mockNow); }, 350);
+    }
     if (path === "/api/power") { mockNow.power = "off"; setTimeout(function () { onNow(mockNow); }, 300); }
     if (path === "/api/volume") {
       var v = mockNow.volume;
@@ -529,6 +609,7 @@
     return new Promise(function (res) { setTimeout(function () { res({ ok: true }); }, 30); });
   }
   if (MOCK) {
+    window.__lock = lock;   // for checking the lock screen player in the preview
     // In the preview, K stands in for "a text field opened on the TV" (the TV app sends this for real).
     addEventListener("keyup", function (e) {   // keyup, so the K itself never lands in the field
       if (e.target === kbd.input) return;
