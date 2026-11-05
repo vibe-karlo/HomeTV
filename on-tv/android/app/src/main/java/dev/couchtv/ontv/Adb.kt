@@ -240,6 +240,9 @@ object Adb {
             runCatching { shell("pm grant ${BuildConfig.APPLICATION_ID} ${WatchNext.PERMISSION}", 8000) }
             // notification access, used only to read media sessions: what is playing, and play, pause and skip from the phone
             runCatching { shell("cmd notification allow_listener ${BuildConfig.APPLICATION_ID}/${MediaListener::class.java.name}", 8000) }
+            // the system log, read only for a held Home press (HomeHold)
+            runCatching { shell("pm grant ${BuildConfig.APPLICATION_ID} android.permission.READ_LOGS", 8000) }
+            HomeHold.start()
         }
         return true
     }

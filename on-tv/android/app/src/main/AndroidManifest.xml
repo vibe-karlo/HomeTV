@@ -23,6 +23,8 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <!-- Android TV's Watch Next list, for Continue Watching. Asked for on the TV, or granted over ADB. -->
+    <!-- Granted over ADB. Only to notice a held Home press, see HomeHold. -->
+    <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
     <!-- The TV's own channels and guide (a normal permission on this Philips: granted on install). -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />

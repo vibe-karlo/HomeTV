@@ -48,6 +48,7 @@ class App : Application() {
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
         })
+        HomeHold.start()
         if (android.os.SystemClock.elapsedRealtime() < 120_000) { startService(this); homeAfterBoot(this) }
     }
 

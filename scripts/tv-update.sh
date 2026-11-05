@@ -33,6 +33,7 @@ echo "   on the TV: $(tv "dumpsys package $PKG | grep versionName" | head -1 | t
 echo "3. Permissions for Continue Watching and now playing"
 tv "pm grant $PKG android.permission.READ_TV_LISTINGS" >/dev/null 2>&1 || true
 tv "cmd notification allow_listener $PKG/$PKG.MediaListener" >/dev/null 2>&1 || true
+tv "pm grant $PKG android.permission.READ_LOGS" >/dev/null 2>&1 || true
 tv "dumpsys package $PKG" | grep -q "READ_TV_LISTINGS: granted=true" && echo "   TV listings: granted" || echo "   TV listings: NOT granted (Continue Watching shows only shows opened from HomeTV)"
 tv "settings get secure enabled_notification_listeners" | grep -q "$PKG" && echo "   notification access: on" || echo "   notification access: OFF (the phone remote falls back to the slower reading)"
 
