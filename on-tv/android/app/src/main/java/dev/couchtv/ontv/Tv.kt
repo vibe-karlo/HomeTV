@@ -67,8 +67,10 @@ object Tv {
             ?: throw ApiError(404, "$pkg is not installed on the TV")
         val comp = i.component
         if (Adb.connected && comp != null) {
-            val out = Adb.shell("am start -n ${comp.packageName}/${comp.className} -a android.intent.action.MAIN -f 0x10200000", 12_000)
-            if (!out.contains("Error")) return "adb"
+            // am answers in about 0.15 s, but now and then its answer never reaches us though the app opened. Don't wait
+            // long for it: without an answer, ask again with a plain intent, which only brings the same app to the front.
+            val out = runCatching { Adb.shell("am start -n ${comp.packageName}/${comp.className} -a android.intent.action.MAIN -f 0x10200000", 4000) }.getOrNull()
+            if (out != null && !out.contains("Error")) return "adb"
         }
         start(i)
         return "intent"
@@ -157,8 +159,9 @@ object Tv {
     @Synchronized private fun usageFront(): String? {
         if (!usageAllowed()) return null
         val now = System.currentTimeMillis()
-        // Read only what happened since the last look (the first look goes back a day).
-        val ev = usage.queryEvents(if (usageFrom == 0L) now - 86_400_000 else usageFrom, now) ?: return usageLast
+        // Read only what happened since the last look (the first look goes back a day). Android files a record a
+        // moment after its time, so each look overlaps the last 10 s: read from exactly "then", a late one is lost for good.
+        val ev = usage.queryEvents(if (usageFrom == 0L) now - 86_400_000 else usageFrom - 10_000, now) ?: return usageLast
         val e = android.app.usage.UsageEvents.Event()
         while (ev.hasNextEvent()) {
             ev.getNextEvent(e)
