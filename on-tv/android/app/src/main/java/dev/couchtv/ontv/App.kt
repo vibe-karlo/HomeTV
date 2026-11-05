@@ -48,6 +48,7 @@ class App : Application() {
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
         })
+        if (android.os.SystemClock.elapsedRealtime() < 120_000) { startService(this); homeAfterBoot(this) }
     }
 
     companion object {
@@ -112,24 +113,33 @@ class App : Application() {
         /** The HOME intent filter sits on an alias that is off by default, so installing never steals the home button. */
         /**
          * After a full restart this Philips opens its own Watch TV by itself, whatever the home app is. So for
-         * the first 90 seconds, Watch TV in front means the TV did that: go to the home screen, at most 3 times.
+         * 90 seconds, Watch TV in front means the TV did that: go to the home screen, at most 3 times.
          * Any other app is left alone, and so is Watch TV once it has been sent away and has really left.
+         * Android tells apps about the restart about a minute late here, but it binds MediaListener much sooner,
+         * and that starts this process: App.onCreate calls this too, so the first of the two wins.
          */
+        @Volatile private var afterBoot = 0   // 1 watching, 2 done
         fun homeAfterBoot(c: Context) {
-            if (!homeEnabled(c)) return
+            synchronized(this) {
+                if (afterBoot != 0 || !homeEnabled(c)) return
+                afterBoot = 1
+            }
             Thread {
                 val end = System.currentTimeMillis() + 90_000
                 var tries = 0
+                var left = false
                 while (System.currentTimeMillis() < end && tries < 3) {
-                    Thread.sleep(3000)
+                    Thread.sleep(1500)
                     val front = runCatching { Tv.frontPackage() }.getOrNull()
                     if (front == "org.droidtv.playtv") {
                         tries++
                         Log.i("couchtv", "restart: Watch TV opened by itself, going home ($tries)")
                         Tv.startHome()
                         Thread.sleep(4000)
-                    } else if (tries > 0) break
+                    } else if (tries > 0) { left = true; break }
                 }
+                // Blocked or never seen: the restart broadcast, when it comes, may try again.
+                afterBoot = if (left) 2 else 0
             }.start()
         }
 

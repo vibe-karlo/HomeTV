@@ -121,6 +121,7 @@ object Tv {
      * dumpsys fallback (over ADB) is heavy on a small TV, so it is only used without usage access.
      */
     fun frontPackage(): String? {
+        if (App.inForeground) return BuildConfig.APPLICATION_ID
         usageFront()?.let { return it }
         if (!Adb.connected) return if (App.inForeground) BuildConfig.APPLICATION_ID else null
         return try {
@@ -163,7 +164,8 @@ object Tv {
             ev.getNextEvent(e)
             if (e.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) usageLast = e.packageName
         }
-        usageFrom = now
+        // Just after a restart Android hands over its records late, with older times: keep reading the whole day.
+        usageFrom = if (android.os.SystemClock.elapsedRealtime() < 300_000) 0L else now
         return usageLast
     }
 
