@@ -133,10 +133,28 @@ object Tv {
     private var usageFrom = 0L
     private var usageLast: String? = null
 
-    @Synchronized private fun usageFront(): String? {
+    private fun usageAllowed(): Boolean {
         val ops = ctx.getSystemService(android.app.AppOpsManager::class.java)
         val mode = ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
-        if (mode != android.app.AppOpsManager.MODE_ALLOWED) return null
+        return mode == android.app.AppOpsManager.MODE_ALLOWED
+    }
+
+    /** Apps opened in the last week, newest first, from the same records. Read only when a phone asks. */
+    fun recentPackages(): List<String> {
+        if (!usageAllowed()) return emptyList()
+        val now = System.currentTimeMillis()
+        val ev = usage.queryEvents(now - 7 * 86_400_000L, now) ?: return emptyList()
+        val e = android.app.usage.UsageEvents.Event()
+        val last = HashMap<String, Long>()
+        while (ev.hasNextEvent()) {
+            ev.getNextEvent(e)
+            if (e.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) last[e.packageName] = e.timeStamp
+        }
+        return last.entries.sortedByDescending { it.value }.map { it.key }
+    }
+
+    @Synchronized private fun usageFront(): String? {
+        if (!usageAllowed()) return null
         val now = System.currentTimeMillis()
         // Read only what happened since the last look (the first look goes back a day).
         val ev = usage.queryEvents(if (usageFrom == 0L) now - 86_400_000 else usageFrom, now) ?: return usageLast

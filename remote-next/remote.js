@@ -421,10 +421,10 @@
     appsEl.classList.add("open"); appsEl.setAttribute("aria-hidden", "false");
     var grid = $("apps-grid");
     var got = MOCK ? Promise.resolve({ apps: [{ package: "com.netflix.ninja", name: "Netflix" }, { package: "com.stremio.one", name: "Stremio" },
-      { package: "com.google.android.youtube.tv", name: "YouTube" }, { package: "com.spotify.tv.android", name: "Spotify" }] }) : call("GET", "/api/tv-apps");
+      { package: "com.google.android.youtube.tv", name: "YouTube" }, { package: "com.spotify.tv.android", name: "Spotify" }],
+      recent: [{ package: "com.stremio.one", name: "Stremio" }, { package: "com.spotify.tv.android", name: "Spotify" }, { package: "com.google.android.youtube.tv", name: "YouTube" }] }) : call("GET", "/api/tv-apps");
     got.then(function (d) {
-      grid.innerHTML = "";
-      d.apps.forEach(function (a) {
+      var tile = function (a) {
         var b = document.createElement("button"); b.className = "app";
         b.innerHTML = "<i></i><span></span>";
         if (a.banner) b.querySelector("i").style.backgroundImage = "url(" + a.banner + ")";
@@ -433,8 +433,15 @@
           tick(); closeApps();
           send("POST", "/api/launch", { app: a.package });
         });
-        grid.appendChild(b);
-      });
+        return b;
+      };
+      var recent = d.recent || [], row = $("recent-row");
+      row.innerHTML = ""; row.scrollLeft = 0;
+      recent.forEach(function (a) { row.appendChild(tile(a)); });
+      row.hidden = $("apps-head").hidden = !recent.length;
+      $("apps-title").textContent = recent.length ? "Recent" : "Apps";
+      grid.innerHTML = "";
+      d.apps.forEach(function (a) { grid.appendChild(tile(a)); });
     }, function () { toast("Could not load the apps"); });
     // The TV's sources under the apps: devices by their own name, with a dot when something is on.
     var gotIn = MOCK ? Promise.resolve({ inputs: [{ id: "h1", name: "HDMI 1", kind: "hdmi", state: "on", connected: true, device: "PlayStation 5", colour: "#0070d1" },

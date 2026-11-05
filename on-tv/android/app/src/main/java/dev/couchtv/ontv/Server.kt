@@ -161,7 +161,12 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 val hidden = p.optJSONArray("hidden")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
                 val all = AppArt.tvApps().map { it.activityInfo.packageName to AppArt.label(it) }.filter { it.first !in hidden }
                     .sortedBy { order.indexOf(it.first).let { i -> if (i < 0) 999 else i } }
-                json(200, ok().put("apps", JSONArray(all.map { (pkg, name) -> JSONObject().put("package", pkg).put("name", name).put("banner", "/art/banner/$pkg") })))
+                val tile = { pkg: String, name: String -> JSONObject().put("package", pkg).put("name", name).put("banner", "/art/banner/$pkg") }
+                // What was open lately, to jump back to: not the app on screen, not the ones hidden from Home.
+                val names = all.toMap(); val front = Tv.frontPackage()
+                val recent = runCatching { Tv.recentPackages() }.getOrDefault(emptyList()).filter { it != front && it in names }.take(6)
+                json(200, ok().put("apps", JSONArray(all.map { (pkg, name) -> tile(pkg, name) }))
+                    .put("recent", JSONArray(recent.map { tile(it, names.getValue(it)) })))
             }
             // A pairing code for a new phone, shown in the home screen's Settings instead of the setup screen.
             "POST /api/pair/new" -> json(200, ok().put("pin", Auth.newPin()).put("expires_in", 180))

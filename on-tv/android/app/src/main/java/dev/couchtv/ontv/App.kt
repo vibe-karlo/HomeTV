@@ -110,6 +110,29 @@ class App : Application() {
         }.getOrNull()
 
         /** The HOME intent filter sits on an alias that is off by default, so installing never steals the home button. */
+        /**
+         * After a full restart this Philips opens its own Watch TV by itself, whatever the home app is. So for
+         * the first 90 seconds, Watch TV in front means the TV did that: go to the home screen, at most 3 times.
+         * Any other app is left alone, and so is Watch TV once it has been sent away and has really left.
+         */
+        fun homeAfterBoot(c: Context) {
+            if (!homeEnabled(c)) return
+            Thread {
+                val end = System.currentTimeMillis() + 90_000
+                var tries = 0
+                while (System.currentTimeMillis() < end && tries < 3) {
+                    Thread.sleep(3000)
+                    val front = runCatching { Tv.frontPackage() }.getOrNull()
+                    if (front == "org.droidtv.playtv") {
+                        tries++
+                        Log.i("couchtv", "restart: Watch TV opened by itself, going home ($tries)")
+                        Tv.startHome()
+                        Thread.sleep(4000)
+                    } else if (tries > 0) break
+                }
+            }.start()
+        }
+
         fun homeEnabled(c: Context) = c.packageManager.getComponentEnabledSetting(ComponentName(c, "${c.packageName}.HomeAlias")) ==
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED
 
@@ -167,5 +190,8 @@ class BridgeService : Service() {
 }
 
 class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(c: Context, i: Intent) { App.startService(c) }
+    override fun onReceive(c: Context, i: Intent) {
+        App.startService(c)
+        if (i.action == Intent.ACTION_BOOT_COMPLETED) App.homeAfterBoot(c)
+    }
 }
