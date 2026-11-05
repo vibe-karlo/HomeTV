@@ -23,6 +23,45 @@ window.HOME_READY.then(function () {
       : Promise.resolve({ ok: true, row: { apps: [{ package: "hr.telekom.android.maxtvp", name: "MAXtv" }, { package: "com.stremio.one", name: "Stremio" }] } });
     got.then(function (d) { cwApps = (d.row && d.row.apps) || []; if (openFlag) draw(); }, function () { cwApps = []; if (openFlag) draw(); });
   }
+  // Your Stremio account: linked with a code you approve on the phone. The TV asks every 3 s until you have, for 5 minutes.
+  var stremio = { linked: false, poll: null };
+  function loadStremio() {
+    if (!TV) return;
+    fetch("/api/stremio").then(function (r) { return r.json(); }).then(function (d) { stremio.linked = !!d.linked; if (openFlag) draw(); }, function () {});
+  }
+  function stopLink() { clearInterval(stremio.poll); stremio.poll = null; }
+  function linked() {
+    stopLink(); stremio.linked = true; side = null; loadCwApps(); H.refreshRows(); H.toast("Stremio linked");
+    if (openFlag) draw();
+  }
+  function linkStremio() {
+    var show = function (d) {
+      side = { name: d.code, help: "On your phone, open " + d.link + " and sign in to Stremio. Only a link to your account is kept on this TV." };
+      draw();
+      var until = Date.now() + 300000;
+      stopLink();
+      stremio.poll = setInterval(function () {
+        if (Date.now() > until) { stopLink(); H.toast("That code ran out. Select Link Account for a new one."); return; }
+        if (!TV) return;
+        fetch("/api/stremio/link?code=" + encodeURIComponent(d.code)).then(function (r) { return r.json(); })
+          .then(function (p) { if (p.linked && stremio.poll) linked(); }, function () {});
+      }, 3000);
+    };
+    if (TV) post("/api/stremio/link").then(function (d) { if (d.code) show(d); else H.toast(d.error || "Stremio did not answer"); }, function () { H.toast("Could not reach the TV app"); });
+    else show({ code: "59JR", link: "link.stremio.com/59JR" });
+  }
+  function stremioRow() {
+    if (stremio.linked) return { label: "Stremio Account", value: "Linked",
+      help: "Shows what you are in the middle of in Stremio, from any device. Select to unlink this TV.",
+      act: function () {
+        stremio.linked = false;
+        if (TV) post("/api/stremio/unlink").then(function () { loadCwApps(); H.refreshRows(); }, function () {});
+        H.toast("Stremio unlinked");
+      } };
+    return { label: "Link Stremio Account", value: "Not linked",
+      help: "Adds what you are in the middle of in Stremio, from any device. You sign in on your phone, never on the TV.",
+      act: linkStremio };
+  }
   function loadAppRows() {
     var got = TV ? fetch("/api/app-rows").then(function (r) { return r.json(); }) : Promise.resolve({ ok: true, rows: SAMPLE_ROWS, allowed: true });
     got.then(function (d) { appRows = d.rows || []; appRowsAllowed = d.allowed !== false; if (openFlag) draw(); },
@@ -141,10 +180,10 @@ window.HOME_READY.then(function () {
       }));
     } },
 
-    cw: { title: "Continue Watching", enter: loadCwApps, rows: function () {
-      if (!cwApps) return [{ label: "Looking for apps", help: "Asking the TV which apps have something in Continue Watching." }];
-      if (!cwApps.length) return [{ label: "Nothing yet", help: "Apps show here once they have something you are in the middle of." }];
-      return cwApps.map(function (a) {
+    cw: { title: "Continue Watching", enter: function () { loadCwApps(); loadStremio(); }, rows: function () {
+      if (!cwApps) return [stremioRow(), { label: "Looking for apps", help: "Asking the TV which apps have something in Continue Watching." }];
+      if (!cwApps.length) return [stremioRow(), { label: "Nothing yet", help: "Apps show here once they have something you are in the middle of." }];
+      return [stremioRow()].concat(cwApps.map(function (a) {
         var off = (P.cwHidden || []).indexOf(a.package) >= 0;
         return { label: a.name || a.package, tick: !off, value: off ? "Hidden" : "Shown",
           help: off ? "Select to put " + a.name + " back in Continue Watching." : "Select to keep " + a.name + " out of Continue Watching.",
@@ -153,7 +192,7 @@ window.HOME_READY.then(function () {
             if (!off) P.cwHidden.push(a.package);
             H.save(); H.refreshRows();
           } };
-      });
+      }));
     } },
 
     approws: { title: "App Rows", enter: loadAppRows, rows: function () {
@@ -320,7 +359,7 @@ window.HOME_READY.then(function () {
     draw();
   }
   function close() {
-    el.classList.remove("open"); openFlag = false;
+    el.classList.remove("open"); openFlag = false; stopLink();
     setTimeout(function () { if (!openFlag) el.hidden = true; }, 420);
     H.closed();
   }

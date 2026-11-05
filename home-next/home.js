@@ -238,7 +238,7 @@ window.HOME_READY.then(function () {
         $("#hero-desc").textContent = item.description || "";
         $("#hero").classList.remove("event", "sport");
         $("#hero").classList.toggle("event", !r[0]);
-        $("#hero-watch .label").textContent = (item.kind === "watchnext" ? "Resume in " : item.kind === "approw" ? "Open in " : "Watch on ") + srcName(item);
+        $("#hero-watch .label").textContent = (item.kind === "watchnext" || item.kind === "stremio" ? "Resume in " : item.kind === "approw" ? "Open in " : "Watch on ") + srcName(item);
         $("#hero-watch").classList.remove("none");
         stage.classList.remove("swap");
       }, 260);
@@ -564,7 +564,7 @@ window.HOME_READY.then(function () {
     if (!TV) return;
     // An app's card goes with its title, so the phone can say what plays when the app itself names nothing (Netflix).
     var wn = fromApp(it);
-    fetch(it.kind === "watchnext" ? "/api/watchnext/open" : it.kind === "approw" ? "/api/approw/open" : "/api/open-show",
+    fetch(it.kind === "watchnext" ? "/api/watchnext/open" : it.kind === "approw" ? "/api/approw/open" : it.kind === "stremio" ? "/api/stremio/open" : "/api/open-show",
       { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(wn ? { id: it.id, title: it.title, episode: it.episode, episode_title: it.episode_title, bg: it.bg } : it) })
       .then(function (r) { return r.json(); })

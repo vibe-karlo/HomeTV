@@ -148,7 +148,7 @@ object Shows {
      */
     fun forget(id: String, at: Long = 0) {
         if (id.isEmpty()) return
-        if (id.startsWith("wn:")) {
+        if (id.startsWith("wn:") || id.startsWith("sm:")) {
             val m = wnRemoved().put(id, at)
             Store.writeJson("wn-removed.json", m)
             return
@@ -170,7 +170,10 @@ object Shows {
         // for it, so Settings can list them.
         val hidden = Prefs.json().optJSONArray("cwHidden")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
         val apps = LinkedHashMap<String, String>()
-        for (w in WatchNext.items()) {
+        // Your Stremio account, when linked, says more than what the Stremio app reports to the TV.
+        val account = Stremio.items()
+        val reported = WatchNext.items().filter { account.isEmpty() || it.optString("package") != Stremio.PKG }
+        for (w in (account + reported).sortedByDescending { it.optLong("at") }) {
             if (gone.has(w.optString("id")) && w.optLong("at") <= gone.optLong(w.optString("id"))) continue
             w.optString("package").takeIf { it.isNotEmpty() }?.let { apps.putIfAbsent(it, w.optString("service")) }
             if (w.optString("package") in hidden) continue
@@ -182,6 +185,7 @@ object Shows {
         val res = AppRows.resuming()
         for (i in 0 until res.length()) {
             val r = res.getJSONObject(i)
+            if (account.isNotEmpty() && r.optString("package") == Stremio.PKG) continue
             r.optString("package").takeIf { it.isNotEmpty() }?.let { apps.putIfAbsent(it, r.optString("service")) }
             if (r.optString("package") in hidden) continue
             if (!seen.add(r.optString("id")) || !titles.add(Finder.norm(r.optString("title")))) continue

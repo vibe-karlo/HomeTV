@@ -140,6 +140,11 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             }
             "POST /api/open-show" -> json(200, Shows.open(body(s)))
             "GET /api/sport" -> Sports.payload().let { p -> json(200, ok().put("sport", p.optJSONArray("sport")).put("tvnow", p.optJSONArray("tvnow"))) }
+            "GET /api/stremio" -> json(200, ok().put("linked", Stremio.signedIn()))
+            "POST /api/stremio/link" -> json(200, ok(Stremio.startLink()))
+            "GET /api/stremio/link" -> json(200, ok().put("linked", Stremio.pollLink(s.parameters["code"]?.firstOrNull().orEmpty())))
+            "POST /api/stremio/unlink" -> { Stremio.signOut(); json(200, ok().put("linked", false)) }
+            "POST /api/stremio/open" -> { Stremio.open(body(s)); json(200, ok().put("opened", "stremio")) }
             "POST /api/continue/remove" -> { val b = body(s); Shows.forget(b.optString("id"), b.optLong("at")); json(200, ok()) }
             // Continue Watching again, when the home screen comes back from an app.
             "GET /api/continue-row" -> json(200, ok().put("row", Shows.continueRow()).put("watchNext", WatchNext.allowed()))

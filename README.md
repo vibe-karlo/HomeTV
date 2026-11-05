@@ -154,6 +154,8 @@ sh scripts/privacy-scan.sh <your-denylist-file>
   [Talkies](https://github.com/rajupp/talkies) by TechPP (MIT), which credits
   [Luma](https://github.com/0xProbabillity/luma-tv) and [Matinee](https://github.com/Jarvis322/matinee)
   (both MIT) for the device names and now playing ideas.
+- Linking a Stremio account for Continue Watching: the calls and the rule are from
+  [tvOS Launcher](https://github.com/techgenius1/tvOS-Launcher) by techgenius1 (Apache 2.0).
 - The telemetry list and the idea of switching packages off instead of removing them:
   [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT).
 - Weather from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
